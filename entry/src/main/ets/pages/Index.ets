@@ -1,4 +1,4 @@
-// Index.ets
+﻿// Index.ets
 import { ChargerApi } from './ChargerApi';
 import { StationData, OutletDetail, SORT_MODE, StationBrief, ChargerConfig } from './ChargerModels';
 import { ConfigManager } from './ConfigManager';
@@ -20,6 +20,17 @@ interface StationWithFreeCount {
 @Entry
 @Component
 struct MainApp {
+  // 辅助方法：显示Toast消息（API 18+兼容）
+  private showToast(message: string, duration: number = 2000): void {
+    try {
+      this.getUIContext().getPromptAction().openToast({
+        message: message,
+        duration: duration
+      });
+    } catch (error) {
+      console.error('Failed to show toast:', error);
+    }
+  }
   // 全局共享的站点配置
   @State stationConfig: Record<string, number> = ConfigManager.getDefaultConfig();
   @State configs: ChargerConfig[] = [];
@@ -63,7 +74,7 @@ struct MainApp {
   async saveCurrentConfig(name: string) {
     if (name.trim() === '') {
       try {
-        promptAction.showToast({ message: '配置名称不能为空', duration: 2000 });
+        this.showToast('配置名称不能为空', 2000);
       } catch (error) {
         console.error('Failed to show toast:', error);
       }
@@ -84,7 +95,7 @@ struct MainApp {
       await ConfigManager.addConfig(name, configToSave);
       await this.loadConfigs();
       try {
-        promptAction.showToast({ message: '配置已保存', duration: 2000 });
+        this.showToast('配置已保存', 2000);
       } catch (error) {
         console.error('Failed to show toast:', error);
       }
@@ -94,7 +105,7 @@ struct MainApp {
       await ConfigManager.updateConfig(this.currentConfig.id, name, configToSave);
       await this.loadConfigs();
       try {
-        promptAction.showToast({ message: '配置已更新', duration: 2000 });
+        this.showToast('配置已更新', 2000);
       } catch (error) {
         console.error('Failed to show toast:', error);
       }
@@ -104,7 +115,7 @@ struct MainApp {
       await ConfigManager.addConfig(name, configToSave);
       await this.loadConfigs();
       try {
-        promptAction.showToast({ message: '配置已保存', duration: 2000 });
+        this.showToast('配置已保存', 2000);
       } catch (error) {
         console.error('Failed to show toast:', error);
       }
@@ -125,7 +136,7 @@ struct MainApp {
     await ConfigManager.deleteConfig(configId);
     await this.loadConfigs();
     try {
-      promptAction.showToast({ message: '配置已删除', duration: 2000 });
+      this.showToast('配置已删除', 2000);
     } catch (error) {
       console.error('Failed to show toast:', error);
     }
@@ -169,14 +180,34 @@ struct MainApp {
                   Text("当前").fontColor('#30d158').fontSize(12)
                 }
                 Button("选择")
-                  .onClick(() => {
-                    this.switchConfig(config.id);
+                  .onClick(async () => {
+                    try {
+                      await this.switchConfig(config.id);
+                    } catch (error) {
+                      console.error('Failed to switch config:', error);
+                      try {
+                        this.showToast('切换配置失败', 2000);
+                      } catch (toastError) {
+                        console.error('Failed to show error toast:', toastError);
+                      }
+                    }
                     this.showConfigList = false;
                   })
                   .fontSize(10)
                   .margin({ left: 10 })
                 Button("删除")
-                  .onClick(() => this.deleteConfig(config.id))
+                  .onClick(async () => {
+                    try {
+                      await this.deleteConfig(config.id);
+                    } catch (error) {
+                      console.error('Failed to delete config:', error);
+                      try {
+                        this.showToast('删除配置失败', 2000);
+                      } catch (toastError) {
+                        console.error('Failed to show error toast:', toastError);
+                      }
+                    }
+                  })
                   .fontSize(10)
                   .backgroundColor('#ff453a')
                   .margin({ left: 5 })
@@ -237,7 +268,18 @@ struct MainApp {
               .margin({ right: 10 })
 
             Button("保存")
-              .onClick(() => this.saveCurrentConfig(this.configDialogText))
+              .onClick(async () => {
+                try {
+                  await this.saveCurrentConfig(this.configDialogText);
+                } catch (error) {
+                  console.error('Failed to save config:', error);
+                  try {
+                    this.showToast('保存配置失败', 2000);
+                  } catch (toastError) {
+                    console.error('Failed to show error toast:', toastError);
+                  }
+                }
+              })
               .backgroundColor('#0a84ff')
               .layoutWeight(1)
           }
@@ -261,6 +303,18 @@ struct MainApp {
 // ==========================================
 @Component
 struct ChargerMonitorUI {
+  // 辅助方法：显示Toast消息（API 18+兼容）
+  private showToast(message: string, duration: number = 2000): void {
+    try {
+      this.getUIContext().getPromptAction().openToast({
+        message: message,
+        duration: duration
+      });
+    } catch (error) {
+      console.error('Failed to show toast:', error);
+    }
+  }
+
   @Link @Watch('onStationConfigChange') stationConfig: Record<string, number>;
   @Link configs: ChargerConfig[];
   @Link currentConfig: ChargerConfig | null;
@@ -318,18 +372,25 @@ struct ChargerMonitorUI {
   }
 
   aboutToDisappear() {
+    // 清理所有定时器
     if (this.refreshInterval !== -1) {
       clearInterval(this.refreshInterval);
+      this.refreshInterval = -1;
     }
     if (this.cooldownInterval !== -1) {
       clearInterval(this.cooldownInterval);
+      this.cooldownInterval = -1;
     }
+    console.log('ChargerMonitorUI: All timers cleaned up');
   }
 
-  // 监听stationConfig变化 - 立即响应
+  // 监听stationConfig变化 - 防抖响应
   onStationConfigChange() {
-    console.log('Config changed detected by @Watch, refreshing data immediately...');
-    this.fetchData();
+    console.log('Config changed detected by @Watch, scheduling data refresh...');
+    // 使用防抖机制，避免频繁刷新
+    setTimeout(() => {
+      this.fetchData();
+    }, 300); // 300ms防抖延迟
   }
 
   // 手动刷新数据
@@ -337,10 +398,7 @@ struct ChargerMonitorUI {
     if (!this.canRefresh) {
       const remainingTime = Math.ceil(this.refreshCooldown / 1000);
       try {
-        promptAction.showToast({
-          message: `刷新过快，请等待${remainingTime}秒后重试`,
-          duration: 2000
-        });
+        this.showToast(`刷新过快，请等待${remainingTime}秒后重试`, 2000);
       } catch (error) {
         console.error('Failed to show toast:', error);
       }
@@ -379,16 +437,33 @@ struct ChargerMonitorUI {
 
     let newStations: StationData[] = [];
     let keys = Object.keys(this.stationConfig);
-    for (let i = 0; i < keys.length; i++) {
-      let name = keys[i];
-      let id = this.stationConfig[name];
-      let data = await ChargerApi.fetchStation(id, name);
-      if (data) {
-        newStations.push(data);
+
+    // 使用Promise.all并行获取数据，提高效率
+    const stationPromises = keys.map(async (name) => {
+      const id = this.stationConfig[name];
+      try {
+        const data = await ChargerApi.fetchStation(id, name);
+        // 验证数据有效性
+        if (data && data.outlets && data.outlets.length > 0) {
+          return data;
+        }
+      } catch (error) {
+        console.error(`Failed to fetch station ${name}:`, error);
       }
-    }
+      return null;
+    });
+
+    const results = await Promise.allSettled(stationPromises);
+
+    results.forEach(result => {
+      if (result.status === 'fulfilled' && result.value) {
+        newStations.push(result.value);
+      }
+    });
+
     this.stations = newStations;
     this.isLoading = false;
+    console.log(`Data fetch completed: ${newStations.length} stations loaded`);
   }
 
   getStats(): StatsResult {
@@ -552,7 +627,18 @@ struct ChargerMonitorUI {
 
           // 刷新按钮
           Button(this.canRefresh ? "刷新" : `冷却中(${Math.ceil(this.refreshCooldown / 1000)}s)`)
-            .onClick(() => this.manualRefresh())
+            .onClick(async () => {
+              try {
+                await this.manualRefresh();
+              } catch (error) {
+                console.error('Manual refresh failed:', error);
+                try {
+                  this.showToast('刷新失败', 2000);
+                } catch (toastError) {
+                  console.error('Failed to show error toast:', toastError);
+                }
+              }
+            })
             .enabled(this.canRefresh)
             .fontSize(12)
             .backgroundColor(this.canRefresh ? '#0a84ff' : '#48484a')
@@ -564,7 +650,7 @@ struct ChargerMonitorUI {
         .width('100%')
         .height(46)
         .padding({ left: 20, right: 20 })
-        .onClick(() => { animateTo({ duration: 300 }, () => { this.isExpanded = !this.isExpanded; }); })
+        .onClick(() => { this.isExpanded = !this.isExpanded; })
 
         // 展开面板
         if (this.isExpanded) {
@@ -672,6 +758,18 @@ struct ChargerMonitorUI {
 // ==========================================
 @Component
 struct StationPickerUI {
+  // 辅助方法：显示Toast消息（API 18+兼容）
+  private showToast(message: string, duration: number = 2000): void {
+    try {
+      this.getUIContext().getPromptAction().openToast({
+        message: message,
+        duration: duration
+      });
+    } catch (error) {
+      console.error('Failed to show toast:', error);
+    }
+  }
+
   @Link stationConfig: Record<string, number>;
 
   @State allStations: StationBrief[] = [];
@@ -725,7 +823,7 @@ struct StationPickerUI {
   // 保存配置
   saveConfig() {
     if (this.selectedIds.length === 0) {
-      promptAction.showToast({ message: '请至少选择一个站点', duration: 2000 });
+      this.showToast('请至少选择一个站点', 2000);
       return;
     }
 
@@ -740,10 +838,7 @@ struct StationPickerUI {
     // 通知父组件保存配置 - 通过自定义事件或回调
     // 这里需要父组件传递回调函数来处理配置保存
     // 暂时先显示保存对话框
-    promptAction.showToast({
-      message: `已选择${this.selectedIds.length}个站点，请在配置对话框输入名称`,
-      duration: 2000
-    });
+    this.showToast(`已选择${this.selectedIds.length}个站点，请在配置对话框输入名称`, 2000);
   }
 
   build() {

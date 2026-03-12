@@ -239,7 +239,12 @@ export class ChargerApi {
     let url = `https://wemp.issks.com/charge/v1/charging/outlet/${outletNo}`;
 
     try {
-      let response = await httpRequest.request(url, { method: http.RequestMethod.GET, header: HEADERS });
+      let response = await httpRequest.request(url, { 
+        method: http.RequestMethod.GET, 
+        header: HEADERS,
+        connectTimeout: 10000, // 10秒连接超时
+        readTimeout: 15000     // 15秒读取超时
+      });
       if (response.responseCode === 200) {
         let data: ApiResponseData = JSON.parse(response.result as string);
         if (data.code == "1" && data.data) {
@@ -259,48 +264,67 @@ export class ChargerApi {
     return {};
   }
 
-  // 获取单个站点的所有插座
-  static async fetchStation(stationId: number, stationName: string): Promise<StationData | null> {
+  // 获取单个站点的所有插座（带重试机制）
+  static async fetchStation(stationId: number, stationName: string, maxRetries = 2): Promise<StationData | null> {
     let httpRequest = http.createHttp();
     let url = `https://wemp.issks.com/charge/v1/outlet/station/outlets/${stationId}`;
 
-    try {
-      let response = await httpRequest.request(url, { method: http.RequestMethod.GET, header: HEADERS });
-      if (response.responseCode === 200) {
-        let data: ApiResponseData = JSON.parse(response.result as string);
-        if (data.code == "1") {
-          let outlets: OutletDetail[] = [];
-          let promises: Promise<void>[] = [];
+    for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      try {
+        console.log(`Fetching station ${stationName} (attempt ${attempt}/${maxRetries + 1})`);
+        
+        let response = await httpRequest.request(url, { 
+          method: http.RequestMethod.GET, 
+          header: HEADERS,
+          connectTimeout: 10000, // 10秒连接超时
+          readTimeout: 15000     // 15秒读取超时
+        });
+        
+        if (response.responseCode === 200) {
+          let data: ApiResponseData = JSON.parse(response.result as string);
+          if (data.code == "1") {
+            let outlets: OutletDetail[] = [];
+            let promises: Promise<void>[] = [];
 
-          let outletItems: OutletItem[] = data.data as OutletItem[] || [];
-          for (let item of outletItems) {
-            let rawStatus = item.currentChargingRecordId || 0;
-            let status = [1, 2, 3].includes(rawStatus) ? rawStatus : 3;
+            let outletItems: OutletItem[] = data.data as OutletItem[] || [];
+            for (let item of outletItems) {
+              let rawStatus = item.currentChargingRecordId || 0;
+              let status = [1, 2, 3].includes(rawStatus) ? rawStatus : 3;
 
-            let outlet: OutletDetail = {
-              serial: item.outletSerialNo || 0,
-              outletNo: item.outletNo || "",
-              status: status
-            };
-            outlets.push(outlet);
+              let outlet: OutletDetail = {
+                serial: item.outletSerialNo || 0,
+                outletNo: item.outletNo || "",
+                status: status
+              };
+              outlets.push(outlet);
 
-            // 并发获取占用中的插座详情
-            if (status === 2 && outlet.outletNo) {
-              let p = ChargerApi.fetchOutletDetail(outlet.outletNo).then(detail => {
-                outlet.power_w = detail.power_w;
-                outlet.fee = detail.fee;
-                outlet.used_min = detail.used_min;
-              });
-              promises.push(p);
+              // 并发获取占用中的插座详情
+              if (status === 2 && outlet.outletNo) {
+                let p = ChargerApi.fetchOutletDetail(outlet.outletNo).then(detail => {
+                  outlet.power_w = detail.power_w;
+                  outlet.fee = detail.fee;
+                  outlet.used_min = detail.used_min;
+                });
+                promises.push(p);
+              }
             }
+            await Promise.all<void>(promises);
+            console.log(`✅ Station ${stationName} fetched successfully`);
+            return { id: stationId, name: stationName, outlets: outlets };
           }
-          await Promise.all(promises);
-          return { id: stationId, name: stationName, outlets: outlets };
+        }
+      } catch (e) {
+        console.error(`❌ Attempt ${attempt} failed for station ${stationName}: ${e}`);
+        
+        // 如果不是最后一次尝试，等待一段时间后重试
+        if (attempt <= maxRetries) {
+          await new Promise<void>(resolve => setTimeout(resolve, 1000 * attempt)); // 递增等待时间
+          continue;
         }
       }
-    } catch (e) {
-      console.error(`Fetch station failed: ${e}`);
     }
+    
+    console.error(`❌ All attempts failed for station ${stationName}`);
     return null;
   }
 
@@ -372,7 +396,9 @@ export class ChargerApi {
       let response = await httpRequest.request(url, {
         method: http.RequestMethod.POST,
         header: HEADERS,
-        extraData: JSON.stringify(payload)
+        extraData: JSON.stringify(payload),
+        connectTimeout: 10000, // 10秒连接超时
+        readTimeout: 15000     // 15秒读取超时
       });
 
       if (response.responseCode === 200) {

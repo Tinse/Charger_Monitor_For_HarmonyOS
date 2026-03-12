@@ -48,6 +48,50 @@ export interface ChargerConfig {
   createdAt: number;
 }
 
+// 数据验证工具类
+export class DataValidator {
+  // 验证OutletDetail数据
+  static validateOutletDetail(data: object | null): boolean {
+    if (typeof data !== 'object' || data === null) return false;
+    
+    const outlet = data as Record<string, number | string>;
+    return !!(outlet && 
+      typeof outlet.serial === 'number' && 
+      typeof outlet.outletNo === 'string' && 
+      typeof outlet.status === 'number' &&
+      [1, 2, 3].includes(outlet.status));
+  }
+
+  // 验证StationData数据
+  static validateStationData(data: object | null): boolean {
+    if (typeof data !== 'object' || data === null) return false;
+    
+    const station = data as Record<string, number | string | object[]>;
+    if (!(station && 
+      typeof station.id === 'number' && 
+      typeof station.name === 'string' && 
+      Array.isArray(station.outlets))) {
+      return false;
+    }
+    
+    // 验证插座数组中的每个元素
+    const outlets = station.outlets as object[];
+    return outlets.every((outlet: object) => DataValidator.validateOutletDetail(outlet));
+  }
+
+  // 验证ChargerConfig数据
+  static validateChargerConfig(data: object | null): boolean {
+    if (typeof data !== 'object' || data === null) return false;
+    
+    const config = data as Record<string, string | number | object>;
+    return !!(config && 
+      typeof config.id === 'string' && 
+      typeof config.name === 'string' && 
+      typeof config.stations === 'object' &&
+      typeof config.createdAt === 'number');
+  }
+}
+
 export interface ConfigStorage {
   configs: ChargerConfig[];
   currentConfigId?: string;
