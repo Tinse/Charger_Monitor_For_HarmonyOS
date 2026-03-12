@@ -1,0 +1,26 @@
+#!/usr/bin/env sh
+
+# ----------------------------------------------------------------------------
+# Huawei hvigor startup script
+# ----------------------------------------------------------------------------
+
+HVIGOR_WRAPPER_DIR="$(dirname "$0")/hvigor"
+
+if [ -f "$HVIGOR_WRAPPER_DIR/hvigor-wrapper.jar" ]; then
+    WRAPPER_JAR="$HVIGOR_WRAPPER_DIR/hvigor-wrapper.jar"
+    WRAPPER_LAUNCHER=com.huawei.ohos.hvigor.HvigorWrapperMain
+else
+    echo ""
+    echo "ERROR: Could not find hvigor-wrapper.jar"
+    echo ""
+    echo "This file should be located at $HVIGOR_WRAPPER_DIR/hvigor-wrapper.jar"
+    echo ""
+    exit 1
+fi
+
+JAVA_EXE=java
+if [ -n "$JAVA_HOME" ]; then
+    JAVA_EXE="$JAVA_HOME/bin/java"
+fi
+
+"$JAVA_EXE" -Dfile.encoding=UTF-8 -noverify $HVIGOR_OPTS -jar "$WRAPPER_JAR" "$@"
