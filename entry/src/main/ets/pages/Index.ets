@@ -2,11 +2,13 @@
 import { ChargerApi } from './ChargerApi';
 import { StationData, OutletDetail, SORT_MODE, StationBrief, ChargerConfig } from './ChargerModels';
 import { ConfigManager } from './ConfigManager';
+import { ThemeManager, ThemeMode, ThemeColors } from './ThemeManager';
+import { APP_STORAGE_KEY_SYSTEM_DARK_MODE } from '../entryability/EntryAbility';
 import common from '@ohos.app.ability.common';
 import promptAction from '@ohos.promptAction';
 import display from '@ohos.display';
 import { geoLocationManager } from '@kit.LocationKit';
-import { Want } from '@kit.AbilityKit';
+import { Want, ConfigurationConstant } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 
 interface StatsResult {
@@ -43,9 +45,88 @@ struct MainApp {
   @State showConfigList: boolean = false;
   @State pendingConfig: Record<string, number> = {}; // 待保存的配置
 
+  // 主题相关状态
+  @State themeMode: ThemeMode = ThemeMode.SYSTEM; // 主题模式设置
+  @StorageLink(APP_STORAGE_KEY_SYSTEM_DARK_MODE) @Watch('onSystemDarkModeChange') systemDarkMode: boolean = true; // 系统深色模式状态
+  @State theme: ThemeColors = ThemeManager.getDarkColors(); // 当前主题颜色
+
+  // 系统深色模式变化回调
+  onSystemDarkModeChange(): void {
+    console.log('System dark mode changed:', this.systemDarkMode);
+    this.updateThemeColors();
+  }
+
+  // 获取当前是否为深色模式
+  getIsDark(): boolean {
+    if (this.themeMode === ThemeMode.SYSTEM) {
+      return this.systemDarkMode;
+    }
+    return this.themeMode === ThemeMode.DARK;
+  }
+
+  // 更新主题颜色
+  updateThemeColors(): void {
+    this.theme = ThemeManager.getColors(this.getIsDark());
+  }
+
+  // 切换主题模式
+  async setThemeMode(mode: ThemeMode): Promise<void> {
+    this.themeMode = mode;
+    this.updateThemeColors();
+    const context = getContext(this) as common.UIAbilityContext;
+    await ThemeManager.saveThemeMode(context, mode);
+
+    // 设置应用颜色模式，确保 onConfigurationUpdate 能正确触发
+    try {
+      const applicationContext = context.getApplicationContext();
+      if (mode === ThemeMode.SYSTEM) {
+        // 跟随系统
+        applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      } else if (mode === ThemeMode.DARK) {
+        // 深色模式
+        applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+      } else {
+        // 浅色模式
+        applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
+      }
+    } catch (error) {
+      console.error('Failed to set color mode:', error);
+    }
+  }
+
   aboutToAppear() {
     console.log('MainApp aboutToAppear - loading configs');
     this.loadConfigs();
+    this.initTheme();
+  }
+
+  // 初始化主题
+  async initTheme() {
+    // 获取 context
+    const context = getContext(this) as common.UIAbilityContext;
+
+    // 加载保存的主题模式
+    this.themeMode = await ThemeManager.loadThemeMode(context);
+
+    // 恢复应用颜色模式设置
+    try {
+      const applicationContext = context.getApplicationContext();
+      if (this.themeMode === ThemeMode.SYSTEM) {
+        // 跟随系统
+        applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+      } else if (this.themeMode === ThemeMode.DARK) {
+        // 深色模式
+        applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+      } else {
+        // 浅色模式
+        applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
+      }
+    } catch (error) {
+      console.error('Failed to set color mode on init:', error);
+    }
+
+    // 更新主题颜色（系统主题状态已由 EntryAbility 通过 AppStorage 提供）
+    this.updateThemeColors();
   }
 
   async loadConfigs() {
@@ -154,112 +235,126 @@ struct MainApp {
 
   build() {
     Column() {
-      // 配置选择器
-      if (this.configs.length > 0) {
-        Row() {
-          Text("当前配置:").fontColor(Color.White).fontSize(14)
-
-          Button(this.currentConfig?.name || '请选择配置')
-            .onClick(() => { this.showConfigList = !this.showConfigList; })
-            .layoutWeight(1)
-            .margin({ left: 10 })
-
-
-        }
-        .width('90%')
-        .padding(10)
-        .backgroundColor('#1a1a1c')
-        .borderRadius(8)
-        .margin({ top: 10 })
-
-        // 配置列表
-        if (this.showConfigList) {
-          Column() {
-            ForEach(this.configs, (config: ChargerConfig) => {
-              Row() {
-                Text(config.name).fontColor(Color.White).fontSize(14)
-                Blank()
-                if (this.currentConfig?.id === config.id) {
-                  Text("当前").fontColor('#30d158').fontSize(12)
-                }
-                Button("选择")
-                  .onClick(async () => {
-                    try {
-                      await this.switchConfig(config.id);
-                    } catch (error) {
-                      console.error('Failed to switch config:', error);
-                      try {
-                        this.showToast('切换配置失败', 2000);
-                      } catch (toastError) {
-                        console.error('Failed to show error toast:', toastError);
-                      }
-                    }
-                    this.showConfigList = false;
-                  })
-                  .fontSize(10)
-                  .margin({ left: 10 })
-                Button("删除")
-                  .onClick(async () => {
-                    try {
-                      await this.deleteConfig(config.id);
-                    } catch (error) {
-                      console.error('Failed to delete config:', error);
-                      try {
-                        this.showToast('删除配置失败', 2000);
-                      } catch (toastError) {
-                        console.error('Failed to show error toast:', toastError);
-                      }
-                    }
-                  })
-                  .fontSize(10)
-                  .backgroundColor('#ff453a')
-                  .margin({ left: 5 })
-              }
-              .width('100%')
-              .padding(8)
-              .backgroundColor('#2c2c2e')
-              .borderRadius(6)
-              .margin({ bottom: 5 })
-            })
-          }
-          .width('90%')
-          .padding(10)
-          .backgroundColor('#1a1a1c')
-          .borderRadius(8)
-          .margin({ top: 5 })
-        }
-      }
-
       Tabs({ barPosition: BarPosition.End }) {
         TabContent() {
-          ChargerMonitorUI({
-            stationConfig: $stationConfig,
-            configs: $configs,
-            currentConfig: $currentConfig
-          })
+          Column() {
+            // 配置选择器
+            if (this.configs.length > 0) {
+              Row() {
+                Text("当前配置:").fontColor(this.theme.textPrimary).fontSize(14)
+
+                Button(this.currentConfig?.name || '请选择配置')
+                  .onClick(() => { this.showConfigList = !this.showConfigList; })
+                  .layoutWeight(1)
+                  .margin({ left: 10 })
+              }
+              .width('90%')
+              .padding(10)
+              .backgroundColor(this.theme.cardBackground)
+              .borderRadius(8)
+              .margin({ top: 10 })
+
+              // 配置列表
+              if (this.showConfigList) {
+                Column() {
+                  ForEach(this.configs, (config: ChargerConfig) => {
+                    Row() {
+                      Text(config.name).fontColor(this.theme.textPrimary).fontSize(14)
+                      Blank()
+                      if (this.currentConfig?.id === config.id) {
+                        Text("当前").fontColor(this.theme.success).fontSize(12)
+                      }
+                      Button("选择")
+                        .onClick(async () => {
+                          try {
+                            await this.switchConfig(config.id);
+                          } catch (error) {
+                            console.error('Failed to switch config:', error);
+                            try {
+                              this.showToast('切换配置失败', 2000);
+                            } catch (toastError) {
+                              console.error('Failed to show error toast:', toastError);
+                            }
+                          }
+                          this.showConfigList = false;
+                        })
+                        .fontSize(10)
+                        .margin({ left: 10 })
+                      Button("删除")
+                        .onClick(async () => {
+                          try {
+                            await this.deleteConfig(config.id);
+                          } catch (error) {
+                            console.error('Failed to delete config:', error);
+                            try {
+                              this.showToast('删除配置失败', 2000);
+                            } catch (toastError) {
+                              console.error('Failed to show error toast:', toastError);
+                            }
+                          }
+                        })
+                        .fontSize(10)
+                        .backgroundColor(this.theme.error)
+                        .margin({ left: 5 })
+                    }
+                    .width('100%')
+                    .padding(8)
+                    .backgroundColor(this.theme.secondaryBackground)
+                    .borderRadius(6)
+                    .margin({ bottom: 5 })
+                  })
+                }
+                .width('90%')
+                .padding(10)
+                .backgroundColor(this.theme.cardBackground)
+                .borderRadius(8)
+                .margin({ top: 5 })
+              }
+            }
+
+            // 监控列表
+            ChargerMonitorUI({
+              stationConfig: $stationConfig,
+              configs: $configs,
+              currentConfig: $currentConfig,
+              theme: this.theme
+            })
+          }
+          .width('100%')
+          .height('100%')
         }.tabBar("监控")
+
+        TabContent() {
+          MapViewerUI()
+        }.tabBar("地图")
 
         TabContent() {
           StationPickerUI({
             stationConfig: $stationConfig,
+            theme: this.theme,
+            themeMode: this.themeMode,
+            onThemeChange: (mode: ThemeMode) => {
+              this.setThemeMode(mode);
+            },
             onSaveConfig: (newConfig: Record<string, number>) => {
               this.handleSaveConfigRequest(newConfig);
             }
           })
-        }.tabBar("设置站点")
+        }.tabBar("设置")
       }
       .layoutWeight(1)
+      .scrollable(false)  // 禁用左右滑动切换，避免与地图手势冲突
 
       // 配置命名对话框
       if (this.showConfigDialog) {
         Column() {
-          Text("配置名称").fontColor(Color.White).fontSize(16).fontWeight(FontWeight.Bold)
+          Text("配置名称").fontColor(this.theme.textPrimary).fontSize(16).fontWeight(FontWeight.Bold)
           TextInput({ placeholder: '输入配置名称', text: this.configDialogText })
             .onChange((value) => { this.configDialogText = value; })
             .width('100%')
             .height(40)
-            .backgroundColor('#2c2c2e')
-            .fontColor(Color.White)
+            .backgroundColor(this.theme.secondaryBackground)
+            .fontColor(this.theme.textPrimary)
             .margin({ top: 10, bottom: 10 })
 
           Row() {
@@ -269,7 +364,7 @@ struct MainApp {
                 this.configDialogText = "";
                 this.pendingConfig = {};
               })
-              .backgroundColor('#48484a')
+              .backgroundColor(this.theme.tertiaryBackground)
               .layoutWeight(1)
               .margin({ right: 10 })
 
@@ -286,21 +381,21 @@ struct MainApp {
                   }
                 }
               })
-              .backgroundColor('#0a84ff')
+              .backgroundColor(this.theme.accent)
               .layoutWeight(1)
           }
           .width('100%')
         }
         .width(300)
         .padding(20)
-        .backgroundColor('#1c1c1e')
+        .backgroundColor(this.theme.cardBackground)
         .borderRadius(12)
         .alignItems(HorizontalAlign.Center)
         .position({ x: '50%', y: '40%' })
         .translate({ x: -150, y: -100 })
       }
     }
-    .width('100%').height('100%').backgroundColor('#000000')
+    .width('100%').height('100%').backgroundColor(this.theme.background)
   }
 }
 
@@ -324,6 +419,8 @@ struct ChargerMonitorUI {
   @Link @Watch('onStationConfigChange') stationConfig: Record<string, number>;
   @Link configs: ChargerConfig[];
   @Link currentConfig: ChargerConfig | null;
+  // 主题参数
+  @Prop theme: ThemeColors = ThemeManager.getDarkColors();
 
   @State isExpanded: boolean = false;
   @State stations: StationData[] = [];
@@ -603,8 +700,8 @@ struct ChargerMonitorUI {
   buildSortMenuItem(text: string, mode: number) {
     Text(text)
       .fontSize(10)
-      .fontColor(this.sortMode === mode ? '#0a84ff' : Color.White)
-      .backgroundColor(this.sortMode === mode ? '#1c1c1e' : 'transparent')
+      .fontColor(this.sortMode === mode ? this.theme.accent : this.theme.textPrimary)
+      .backgroundColor(this.sortMode === mode ? this.theme.cardBackground : 'transparent')
       .width('100%')
       .height(24)
       .textAlign(TextAlign.Start)
@@ -623,12 +720,12 @@ struct ChargerMonitorUI {
         // 头部胶囊
         Row() {
           if (this.isLoading) {
-            Text("正在获取数据…").fontColor('#b4b4b4').fontSize(14)
+            Text("正在获取数据…").fontColor(this.theme.textTertiary).fontSize(14)
           } else {
-            Circle({ width: 12, height: 12 }).fill(this.getStats().anyFree ? '#30d158' : '#ff453a').margin({ right: 10 })
-            Text(this.getStats().anyFree ? "有空闲插座" : "全部占用").fontColor(Color.White).fontSize(16).fontWeight(FontWeight.Medium)
+            Circle({ width: 12, height: 12 }).fill(this.getStats().anyFree ? this.theme.success : this.theme.error).margin({ right: 10 })
+            Text(this.getStats().anyFree ? "有空闲插座" : "全部占用").fontColor(this.theme.textPrimary).fontSize(16).fontWeight(FontWeight.Medium)
             Blank()
-            Text(`${this.getStats().free}/${this.getStats().total}`).fontColor(this.getStats().anyFree ? '#30d158' : '#ff453a').fontSize(16).fontWeight(FontWeight.Bold)
+            Text(`${this.getStats().free}/${this.getStats().total}`).fontColor(this.getStats().anyFree ? this.theme.success : this.theme.error).fontSize(16).fontWeight(FontWeight.Bold)
           }
 
           // 刷新按钮
@@ -647,8 +744,8 @@ struct ChargerMonitorUI {
             })
             .enabled(this.canRefresh)
             .fontSize(12)
-            .backgroundColor(this.canRefresh ? '#0a84ff' : '#48484a')
-            .fontColor(Color.White)
+            .backgroundColor(this.canRefresh ? this.theme.accent : this.theme.tertiaryBackground)
+            .fontColor('#ffffff')
             .width(60)
             .height(28)
             .margin({ left: 10 })
@@ -664,20 +761,20 @@ struct ChargerMonitorUI {
             TextInput({ placeholder: '搜索站点名称…', text: this.searchText })
               .onChange((value) => { this.searchText = value; })
               .height(36)
-              .backgroundColor('rgba(0,0,0,0.5)')
-              .fontColor(Color.White)
+              .backgroundColor(this.theme.overlay)
+              .fontColor(this.theme.textPrimary)
               .margin({ top: 10, bottom: 10 })
 
             // 排序模式选择器 - 使用简化按钮组（节省空间）
             Row() {
-              Text("排序:").fontColor('#8e8e93').fontSize(12).margin({ right: 10 })
+              Text("排序:").fontColor(this.theme.textSecondary).fontSize(12).margin({ right: 10 })
               Button(this.getSortModeText(this.sortMode))
                 .onClick(() => {
                   this.showSortMenu = !this.showSortMenu;
                 })
                 .fontSize(10)
-                .backgroundColor('#48484a')
-                .fontColor(Color.White)
+                .backgroundColor(this.theme.tertiaryBackground)
+                .fontColor(this.theme.textPrimary)
                 .width(80)
                 .height(24)
                 .borderRadius(4)
@@ -695,7 +792,7 @@ struct ChargerMonitorUI {
                 this.buildSortMenuItem('费用', SORT_MODE.FEE)
                 this.buildSortMenuItem('使用时长', SORT_MODE.DURATION)
               }
-              .backgroundColor('#2c2c2e')
+              .backgroundColor(this.theme.secondaryBackground)
               .borderRadius(4)
               .width(100)
               .margin({ bottom: 10 })
@@ -706,27 +803,27 @@ struct ChargerMonitorUI {
                 ListItem() {
                   Column() {
                     Row() {
-                      Text(item.station.name).fontColor(Color.White).fontSize(14).fontWeight(FontWeight.Bold)
+                      Text(item.station.name).fontColor(this.theme.textPrimary).fontSize(14).fontWeight(FontWeight.Bold)
                       Blank()
                       Text(` ${item.freeCount}/${item.station.outlets.length} `)
-                        .fontColor(item.freeCount > 0 ? '#30d158' : '#ff453a')
+                        .fontColor(item.freeCount > 0 ? this.theme.success : this.theme.error)
                         .backgroundColor(item.freeCount > 0 ? 'rgba(48,209,88,0.15)' : 'rgba(255,69,58,0.15)')
                         .borderRadius(10).fontSize(12).padding(4)
                     }
-                    .width('100%').padding(12).border({ width: { bottom: 1 }, color: 'rgba(255,255,255,0.05)' })
+                    .width('100%').padding(12).border({ width: { bottom: 1 }, color: this.theme.border })
 
                     Column({ space: 6 }) {
                       ForEach(item.station.outlets, (outlet: OutletDetail) => {
                         Row() {
-                          Rect({ width: 3, height: 20 }).fill(outlet.status === 1 ? '#30d158' : (outlet.status === 2 ? '#ff453a' : '#ffd60a')).radius(1.5).margin({ right: 10 })
-                          Text(`插座${outlet.serial}`).fontColor(Color.White).fontSize(13)
+                          Rect({ width: 3, height: 20 }).fill(outlet.status === 1 ? this.theme.success : (outlet.status === 2 ? this.theme.error : '#ffd60a')).radius(1.5).margin({ right: 10 })
+                          Text(`插座${outlet.serial}`).fontColor(this.theme.textPrimary).fontSize(13)
                           Blank()
                           if (outlet.status === 2) {
-                            if (outlet.power_w !== undefined) Text(`${outlet.power_w}W`).chipStyle('#0a84ff')
-                            if (outlet.fee !== undefined) Text(`¥${outlet.fee.toFixed(2)}`).chipStyle('#30d158')
+                            if (outlet.power_w !== undefined) Text(`${outlet.power_w}W`).chipStyle(this.theme.accent)
+                            if (outlet.fee !== undefined) Text(`¥${outlet.fee.toFixed(2)}`).chipStyle(this.theme.success)
                             if (outlet.used_min !== undefined) Text(`${outlet.used_min}分钟`).chipStyle('#ffd60a')
                           } else {
-                            Text(outlet.status === 1 ? '空闲' : '故障').chipStyle(outlet.status === 1 ? '#30d158' : '#ff453a')
+                            Text(outlet.status === 1 ? '空闲' : '故障').chipStyle(outlet.status === 1 ? this.theme.success : this.theme.error)
                           }
                         }
                         .width('100%')
@@ -734,28 +831,28 @@ struct ChargerMonitorUI {
                       })
                     }
                   }
-                  .backgroundColor('#1c1c1e')
+                  .backgroundColor(this.theme.cardBackground)
                   .borderRadius(8)
                   .padding(0)
                 }
               })
             }
             .height(this.getExpandedHeight() - 160) // 减去搜索框和排序控件的高度
-            .backgroundColor('#000000')
+            .backgroundColor(this.theme.background)
             .padding({ left: 10, right: 10 })
           }
           .width('100%')
-          .backgroundColor('#000000')
+          .backgroundColor(this.theme.background)
           .padding({ left: 10, right: 10 })
           .height(this.getExpandedHeight())
         }
       }
       .width('100%')
-      .backgroundColor('#000000')
+      .backgroundColor(this.theme.background)
       .borderRadius(12)
       .margin({ top: 10 })
     }
-    .width('100%').height('100%').backgroundColor('#000000')
+    .width('100%').height('100%').backgroundColor(this.theme.background)
   }
 }
 
@@ -779,6 +876,11 @@ struct StationPickerUI {
   @Link stationConfig: Record<string, number>;
   // 保存配置的回调函数
   onSaveConfig?: (newConfig: Record<string, number>) => void;
+  // 主题切换回调
+  onThemeChange?: (mode: ThemeMode) => void;
+  // 主题参数
+  @Prop theme: ThemeColors = ThemeManager.getDarkColors();
+  @Prop themeMode: ThemeMode = ThemeMode.SYSTEM;
 
   @State allStations: StationBrief[] = [];
   @State searchText: string = "";
@@ -938,20 +1040,81 @@ struct StationPickerUI {
 
   build() {
     Column() {
+      // 主题设置区域
+      Column() {
+        Text('外观设置')
+          .fontColor(this.theme.textPrimary)
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
+          .width('90%')
+          .margin({ top: 16, bottom: 8 })
+
+        Row() {
+          Button('跟随系统')
+            .fontSize(13)
+            .height(36)
+            .layoutWeight(1)
+            .backgroundColor(this.themeMode === ThemeMode.SYSTEM ? this.theme.accent : this.theme.secondaryBackground)
+            .fontColor(this.themeMode === ThemeMode.SYSTEM ? '#ffffff' : this.theme.textPrimary)
+            .borderRadius(8)
+            .onClick(() => {
+              if (this.onThemeChange) {
+                this.onThemeChange(ThemeMode.SYSTEM);
+              }
+            })
+          Button('深色模式')
+            .fontSize(13)
+            .height(36)
+            .layoutWeight(1)
+            .backgroundColor(this.themeMode === ThemeMode.DARK ? this.theme.accent : this.theme.secondaryBackground)
+            .fontColor(this.themeMode === ThemeMode.DARK ? '#ffffff' : this.theme.textPrimary)
+            .borderRadius(8)
+            .margin({ left: 4, right: 4 })
+            .onClick(() => {
+              if (this.onThemeChange) {
+                this.onThemeChange(ThemeMode.DARK);
+              }
+            })
+          Button('浅色模式')
+            .fontSize(13)
+            .height(36)
+            .layoutWeight(1)
+            .backgroundColor(this.themeMode === ThemeMode.LIGHT ? this.theme.accent : this.theme.secondaryBackground)
+            .fontColor(this.themeMode === ThemeMode.LIGHT ? '#ffffff' : this.theme.textPrimary)
+            .borderRadius(8)
+            .onClick(() => {
+              if (this.onThemeChange) {
+                this.onThemeChange(ThemeMode.LIGHT);
+              }
+            })
+        }
+        .width('90%')
+        .margin({ bottom: 16 })
+      }
+      .width('100%')
+
+      // 站点设置标题
+      Text('站点配置')
+        .fontColor(this.theme.textPrimary)
+        .fontSize(16)
+        .fontWeight(FontWeight.Bold)
+        .width('90%')
+        .margin({ bottom: 8 })
+
       // 搜索框
       TextInput({ placeholder: '搜索站点名称…', text: this.searchText })
         .onChange((value) => { this.searchText = value; })
         .width('90%')
         .height(40)
-        .backgroundColor('#2c2c2e')
-        .fontColor(Color.White)
+        .backgroundColor(this.theme.secondaryBackground)
+        .fontColor(this.theme.textPrimary)
         .borderRadius(8)
-        .margin({ top: 16, bottom: 8 })
+        .margin({ bottom: 8 })
 
       // 位置状态提示
       if (this.locationStatus) {
         Text(this.locationStatus)
-          .fontColor('#8e8e93')
+          .fontColor(this.theme.textSecondary)
           .fontSize(12)
           .width('90%')
           .margin({ bottom: 8 })
@@ -961,7 +1124,9 @@ struct StationPickerUI {
       if (this.isLoading) {
         Row() {
           LoadingProgress()
-          Text(this.loadingMessage).fontColor(Color.White).fontSize(14).margin({ left: 10 })
+            .width(24)
+            .height(24)
+          Text(this.loadingMessage).fontColor(this.theme.textPrimary).fontSize(14).margin({ left: 10 })
         }
         .width('100%')
         .justifyContent(FlexAlign.Center)
@@ -972,22 +1137,22 @@ struct StationPickerUI {
           Text('📭')
             .fontSize(48)
           Text('未找到附近充电站')
-            .fontColor(Color.White)
+            .fontColor(this.theme.textPrimary)
             .fontSize(16)
           if (this.locationStatus.includes('默认位置')) {
             Text('请确保设备定位服务已开启')
-              .fontColor('#8e8e93')
+              .fontColor(this.theme.textSecondary)
               .fontSize(14)
           }
           if (this.locationStatus.includes('网络')) {
             Text('请检查网络连接')
-              .fontColor('#8e8e93')
+              .fontColor(this.theme.textSecondary)
               .fontSize(14)
           }
           // 刷新按钮
           Button('刷新')
-            .backgroundColor('#30d158')
-            .fontColor(Color.White)
+            .backgroundColor(this.theme.success)
+            .fontColor('#ffffff')
             .width(120)
             .height(40)
             .margin({ top: 16 })
@@ -1019,20 +1184,20 @@ struct StationPickerUI {
                 // 站点信息
                 Column({ space: 2 }) {
                   Text(station.stationName)
-                    .fontColor(Color.White)
+                    .fontColor(this.theme.textPrimary)
                     .fontSize(16)
                     .fontWeight(FontWeight.Medium)
 
                   if (station.address) {
                     Text(station.address)
-                      .fontColor('#8e8e93')
+                      .fontColor(this.theme.textSecondary)
                       .fontSize(12)
                   }
                   
                   // 显示距离
                   if (station.formattedDistance) {
                     Text(`距离: ${station.formattedDistance}`)
-                      .fontColor('#30d158')
+                      .fontColor(this.theme.success)
                       .fontSize(11)
                   }
                 }
@@ -1040,7 +1205,7 @@ struct StationPickerUI {
               }
               .width('100%')
               .padding(16)
-              .backgroundColor('#1c1c1e')
+              .backgroundColor(this.theme.cardBackground)
               .borderRadius(8)
             }
           })
@@ -1053,11 +1218,11 @@ struct StationPickerUI {
       Button(`保存选中站点 (${this.selectedIds.length})`)
         .width('90%')
         .margin(16)
-        .backgroundColor('#30d158')
+        .backgroundColor(this.theme.success)
         .onClick(() => this.saveConfig())
 
     }
-    .width('100%').height('100%').backgroundColor('#000000')
+    .width('100%').height('100%').backgroundColor(this.theme.background)
   }
 
   // 显示开启定位服务弹窗
@@ -1087,4 +1252,142 @@ struct StationPickerUI {
   .padding({ left: 6, right: 6, top: 2, bottom: 2 })
   .borderRadius(8)
   .margin({ right: 5 })
+}
+
+// ==========================================
+// 3. 地图查看组件 (Tab 3)
+// 支持双指缩放和单指移动
+// ==========================================
+@Component
+struct MapViewerUI {
+  // 缩放比例
+  @State scaleValue: number = 1.0;
+  // 上次缩放值（用于双指缩放计算）
+  @State pinchValue: number = 1.0;
+  // X轴偏移
+  @State offsetX: number = 0;
+  // Y轴偏移
+  @State offsetY: number = 0;
+  // 上次X偏移（用于单指移动计算）
+  @State lastOffsetX: number = 0;
+  // 上次Y偏移（用于单指移动计算）
+  @State lastOffsetY: number = 0;
+  // 最小缩放比例
+  private minScale: number = 0.5;
+  // 最大缩放比例
+  private maxScale: number = 5.0;
+  // 拖动灵敏度系数
+  private dragSensitivity: number = 2.5;
+
+  build() {
+    Column() {
+      // 提示信息和重置按钮
+      Row() {
+        Text("双指缩放 | 单指拖动")
+          .fontColor('#888888')
+          .fontSize(12)
+        Blank()
+        Text(`缩放: ${(this.scaleValue * 100).toFixed(0)}%`)
+          .fontColor('#888888')
+          .fontSize(12)
+          .margin({ right: 15 })
+        // 重置按钮
+        Button("重置")
+          .fontSize(12)
+          .height(28)
+          .padding({ left: 10, right: 10 })
+          .backgroundColor('#48484a')
+          .onClick(() => {
+            this.resetView();
+          })
+      }
+      .width('95%')
+      .padding({ top: 10, bottom: 10 })
+
+      // 地图显示区域
+      Stack() {
+        Image($r('app.media.map'))
+          .width('100%')
+          .height('100%')
+          .objectFit(ImageFit.Contain)
+          .scale({ x: this.scaleValue, y: this.scaleValue })
+          .translate({ x: this.offsetX, y: this.offsetY })
+          .gesture(
+            GestureGroup(GestureMode.Parallel,
+              // 双指缩放手势
+              PinchGesture({ fingers: 2 })
+                .onActionStart(() => {
+                  this.pinchValue = this.scaleValue;
+                })
+                .onActionUpdate((event: GestureEvent) => {
+                  let newScale = this.pinchValue * event.scale;
+                  // 限制缩放范围
+                  newScale = Math.max(this.minScale, Math.min(this.maxScale, newScale));
+                  this.scaleValue = newScale;
+                  // 缩放时调整偏移量
+                  this.adjustOffsetOnScale();
+                })
+                .onActionEnd(() => {
+                  this.pinchValue = this.scaleValue;
+                }),
+              // 单指拖动手势（放大时生效）
+              PanGesture({ fingers: 1, direction: PanDirection.All })
+                .onActionStart(() => {
+                  this.lastOffsetX = this.offsetX;
+                  this.lastOffsetY = this.offsetY;
+                })
+                .onActionUpdate((event: GestureEvent) => {
+                  // 只有放大状态下才允许拖动
+                  if (this.scaleValue > 1.0) {
+                    // 提高灵敏度：乘以灵敏度系数
+                    this.offsetX = this.lastOffsetX + event.offsetX * this.dragSensitivity;
+                    this.offsetY = this.lastOffsetY + event.offsetY * this.dragSensitivity;
+                    // 限制偏移范围
+                    this.clampOffset();
+                  }
+                })
+                .onActionEnd(() => {
+                  this.lastOffsetX = this.offsetX;
+                  this.lastOffsetY = this.offsetY;
+                })
+            )
+          )
+      }
+      .width('100%')
+      .layoutWeight(1)
+      .clip(true)
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor('#1a1a1c')
+  }
+
+  // 重置视图
+  private resetView() {
+    animateTo({ duration: 300, curve: Curve.EaseOut }, () => {
+      this.scaleValue = 1.0;
+      this.pinchValue = 1.0;
+      this.offsetX = 0;
+      this.offsetY = 0;
+      this.lastOffsetX = 0;
+      this.lastOffsetY = 0;
+    });
+  }
+
+  // 缩放时调整偏移量
+  private adjustOffsetOnScale() {
+    // 简单处理：缩放时重置偏移
+    if (this.scaleValue <= 1.0) {
+      this.offsetX = 0;
+      this.offsetY = 0;
+    }
+  }
+
+  // 限制偏移范围
+  private clampOffset() {
+    // 计算最大允许偏移量（根据缩放比例动态计算）
+    const maxOffset = (this.scaleValue - 1) * 300;
+    this.offsetX = Math.max(-maxOffset, Math.min(maxOffset, this.offsetX));
+    this.offsetY = Math.max(-maxOffset, Math.min(maxOffset, this.offsetY));
+  }
 }

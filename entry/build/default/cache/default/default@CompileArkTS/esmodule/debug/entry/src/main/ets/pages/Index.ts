@@ -1,10 +1,25 @@
 if (!("finalizeConstruction" in ViewPU.prototype)) {
     Reflect.set(ViewPU.prototype, "finalizeConstruction", () => { });
 }
+interface MapViewerUI_Params {
+    scaleValue?: number;
+    pinchValue?: number;
+    offsetX?: number;
+    offsetY?: number;
+    lastOffsetX?: number;
+    lastOffsetY?: number;
+    minScale?: number;
+    maxScale?: number;
+    dragSensitivity?: number;
+}
 interface StationPickerUI_Params {
     stationConfig?: Record<string, number>;
     // 保存配置的回调函数
     onSaveConfig?: (newConfig: Record<string, number>) => void;
+    // 主题切换回调
+    onThemeChange?: (mode: ThemeMode) => void;
+    theme?: ThemeColors;
+    themeMode?: ThemeMode;
     allStations?: StationBrief[];
     searchText?: string;
     selectedIds?: number[];
@@ -17,6 +32,7 @@ interface ChargerMonitorUI_Params {
     stationConfig?: Record<string, number>;
     configs?: ChargerConfig[];
     currentConfig?: ChargerConfig | null;
+    theme?: ThemeColors;
     isExpanded?: boolean;
     stations?: StationData[];
     searchText?: string;
@@ -39,16 +55,23 @@ interface MainApp_Params {
     configDialogText?: string;
     showConfigList?: boolean;
     pendingConfig?: Record<string, number>;
+    themeMode?: ThemeMode;
+    systemDarkMode?: boolean;
+    theme?: ThemeColors;
 }
 import { ChargerApi } from "@normalized:N&&&entry/src/main/ets/pages/ChargerApi&";
 import { SORT_MODE } from "@normalized:N&&&entry/src/main/ets/pages/ChargerModels&";
 import type { StationData, OutletDetail, StationBrief, ChargerConfig } from "@normalized:N&&&entry/src/main/ets/pages/ChargerModels&";
 import { ConfigManager } from "@normalized:N&&&entry/src/main/ets/pages/ConfigManager&";
+import { ThemeManager, ThemeMode } from "@normalized:N&&&entry/src/main/ets/pages/ThemeManager&";
+import type { ThemeColors } from "@normalized:N&&&entry/src/main/ets/pages/ThemeManager&";
+import { APP_STORAGE_KEY_SYSTEM_DARK_MODE } from "@normalized:N&&&entry/src/main/ets/entryability/EntryAbility&";
 import type common from "@ohos:app.ability.common";
 import promptAction from "@ohos:promptAction";
 import display from "@ohos:display";
 import geoLocationManager from "@ohos:geoLocationManager";
 import type Want from "@ohos:app.ability.Want";
+import ConfigurationConstant from "@ohos:app.ability.ConfigurationConstant";
 import type { BusinessError } from "@ohos:base";
 interface StatsResult {
     total: number;
@@ -72,7 +95,11 @@ class MainApp extends ViewPU {
         this.__configDialogText = new ObservedPropertySimplePU("", this, "configDialogText");
         this.__showConfigList = new ObservedPropertySimplePU(false, this, "showConfigList");
         this.__pendingConfig = new ObservedPropertyObjectPU({}, this, "pendingConfig");
+        this.__themeMode = new ObservedPropertySimplePU(ThemeMode.SYSTEM, this, "themeMode");
+        this.__systemDarkMode = this.createStorageLink(APP_STORAGE_KEY_SYSTEM_DARK_MODE, true, "systemDarkMode");
+        this.__theme = new ObservedPropertyObjectPU(ThemeManager.getDarkColors(), this, "theme");
         this.setInitiallyProvidedValue(params);
+        this.declareWatch("systemDarkMode", this.onSystemDarkModeChange);
         this.finalizeConstruction();
     }
     setInitiallyProvidedValue(params: MainApp_Params) {
@@ -97,6 +124,12 @@ class MainApp extends ViewPU {
         if (params.pendingConfig !== undefined) {
             this.pendingConfig = params.pendingConfig;
         }
+        if (params.themeMode !== undefined) {
+            this.themeMode = params.themeMode;
+        }
+        if (params.theme !== undefined) {
+            this.theme = params.theme;
+        }
     }
     updateStateVars(params: MainApp_Params) {
     }
@@ -108,6 +141,9 @@ class MainApp extends ViewPU {
         this.__configDialogText.purgeDependencyOnElmtId(rmElmtId);
         this.__showConfigList.purgeDependencyOnElmtId(rmElmtId);
         this.__pendingConfig.purgeDependencyOnElmtId(rmElmtId);
+        this.__themeMode.purgeDependencyOnElmtId(rmElmtId);
+        this.__systemDarkMode.purgeDependencyOnElmtId(rmElmtId);
+        this.__theme.purgeDependencyOnElmtId(rmElmtId);
     }
     aboutToBeDeleted() {
         this.__stationConfig.aboutToBeDeleted();
@@ -117,6 +153,9 @@ class MainApp extends ViewPU {
         this.__configDialogText.aboutToBeDeleted();
         this.__showConfigList.aboutToBeDeleted();
         this.__pendingConfig.aboutToBeDeleted();
+        this.__themeMode.aboutToBeDeleted();
+        this.__systemDarkMode.aboutToBeDeleted();
+        this.__theme.aboutToBeDeleted();
         SubscriberManager.Get().delete(this.id__());
         this.aboutToBeDeletedInternal();
     }
@@ -182,9 +221,102 @@ class MainApp extends ViewPU {
     set pendingConfig(newValue: Record<string, number>) {
         this.__pendingConfig.set(newValue);
     }
+    // 主题相关状态
+    private __themeMode: ObservedPropertySimplePU<ThemeMode>; // 主题模式设置
+    get themeMode() {
+        return this.__themeMode.get();
+    }
+    set themeMode(newValue: ThemeMode) {
+        this.__themeMode.set(newValue);
+    }
+    private __systemDarkMode: ObservedPropertyAbstractPU<boolean>; // 系统深色模式状态
+    get systemDarkMode() {
+        return this.__systemDarkMode.get();
+    }
+    set systemDarkMode(newValue: boolean) {
+        this.__systemDarkMode.set(newValue);
+    }
+    private __theme: ObservedPropertyObjectPU<ThemeColors>; // 当前主题颜色
+    get theme() {
+        return this.__theme.get();
+    }
+    set theme(newValue: ThemeColors) {
+        this.__theme.set(newValue);
+    }
+    // 系统深色模式变化回调
+    onSystemDarkModeChange(): void {
+        console.log('System dark mode changed:', this.systemDarkMode);
+        this.updateThemeColors();
+    }
+    // 获取当前是否为深色模式
+    getIsDark(): boolean {
+        if (this.themeMode === ThemeMode.SYSTEM) {
+            return this.systemDarkMode;
+        }
+        return this.themeMode === ThemeMode.DARK;
+    }
+    // 更新主题颜色
+    updateThemeColors(): void {
+        this.theme = ThemeManager.getColors(this.getIsDark());
+    }
+    // 切换主题模式
+    async setThemeMode(mode: ThemeMode): Promise<void> {
+        this.themeMode = mode;
+        this.updateThemeColors();
+        const context = getContext(this) as common.UIAbilityContext;
+        await ThemeManager.saveThemeMode(context, mode);
+        // 设置应用颜色模式，确保 onConfigurationUpdate 能正确触发
+        try {
+            const applicationContext = context.getApplicationContext();
+            if (mode === ThemeMode.SYSTEM) {
+                // 跟随系统
+                applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+            }
+            else if (mode === ThemeMode.DARK) {
+                // 深色模式
+                applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+            }
+            else {
+                // 浅色模式
+                applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
+            }
+        }
+        catch (error) {
+            console.error('Failed to set color mode:', error);
+        }
+    }
     aboutToAppear() {
         console.log('MainApp aboutToAppear - loading configs');
         this.loadConfigs();
+        this.initTheme();
+    }
+    // 初始化主题
+    async initTheme() {
+        // 获取 context
+        const context = getContext(this) as common.UIAbilityContext;
+        // 加载保存的主题模式
+        this.themeMode = await ThemeManager.loadThemeMode(context);
+        // 恢复应用颜色模式设置
+        try {
+            const applicationContext = context.getApplicationContext();
+            if (this.themeMode === ThemeMode.SYSTEM) {
+                // 跟随系统
+                applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+            }
+            else if (this.themeMode === ThemeMode.DARK) {
+                // 深色模式
+                applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
+            }
+            else {
+                // 浅色模式
+                applicationContext.setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
+            }
+        }
+        catch (error) {
+            console.error('Failed to set color mode on init:', error);
+        }
+        // 更新主题颜色（系统主题状态已由 EntryAbility 通过 AppStorage 提供）
+        this.updateThemeColors();
     }
     async loadConfigs() {
         console.log('Loading configs from storage...');
@@ -292,181 +424,195 @@ class MainApp extends ViewPU {
             Column.create();
             Column.width('100%');
             Column.height('100%');
-            Column.backgroundColor('#000000');
+            Column.backgroundColor(this.theme.background);
         }, Column);
-        this.observeComponentCreation2((elmtId, isInitialRender) => {
-            If.create();
-            // 配置选择器
-            if (this.configs.length > 0) {
-                this.ifElseBranchUpdateFunction(0, () => {
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Row.create();
-                        Row.width('90%');
-                        Row.padding(10);
-                        Row.backgroundColor('#1a1a1c');
-                        Row.borderRadius(8);
-                        Row.margin({ top: 10 });
-                    }, Row);
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Text.create("当前配置:");
-                        Text.fontColor(Color.White);
-                        Text.fontSize(14);
-                    }, Text);
-                    Text.pop();
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Button.createWithLabel(this.currentConfig?.name || '请选择配置');
-                        Button.onClick(() => { this.showConfigList = !this.showConfigList; });
-                        Button.layoutWeight(1);
-                        Button.margin({ left: 10 });
-                    }, Button);
-                    Button.pop();
-                    Row.pop();
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        If.create();
-                        // 配置列表
-                        if (this.showConfigList) {
-                            this.ifElseBranchUpdateFunction(0, () => {
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Column.create();
-                                    Column.width('90%');
-                                    Column.padding(10);
-                                    Column.backgroundColor('#1a1a1c');
-                                    Column.borderRadius(8);
-                                    Column.margin({ top: 5 });
-                                }, Column);
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    ForEach.create();
-                                    const forEachItemGenFunction = _item => {
-                                        const config = _item;
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Row.create();
-                                            Row.width('100%');
-                                            Row.padding(8);
-                                            Row.backgroundColor('#2c2c2e');
-                                            Row.borderRadius(6);
-                                            Row.margin({ bottom: 5 });
-                                        }, Row);
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Text.create(config.name);
-                                            Text.fontColor(Color.White);
-                                            Text.fontSize(14);
-                                        }, Text);
-                                        Text.pop();
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Blank.create();
-                                        }, Blank);
-                                        Blank.pop();
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            If.create();
-                                            if (this.currentConfig?.id === config.id) {
-                                                this.ifElseBranchUpdateFunction(0, () => {
-                                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                                        Text.create("当前");
-                                                        Text.fontColor('#30d158');
-                                                        Text.fontSize(12);
-                                                    }, Text);
-                                                    Text.pop();
-                                                });
-                                            }
-                                            else {
-                                                this.ifElseBranchUpdateFunction(1, () => {
-                                                });
-                                            }
-                                        }, If);
-                                        If.pop();
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Button.createWithLabel("选择");
-                                            Button.onClick(async () => {
-                                                try {
-                                                    await this.switchConfig(config.id);
-                                                }
-                                                catch (error) {
-                                                    console.error('Failed to switch config:', error);
-                                                    try {
-                                                        this.showToast('切换配置失败', 2000);
-                                                    }
-                                                    catch (toastError) {
-                                                        console.error('Failed to show error toast:', toastError);
-                                                    }
-                                                }
-                                                this.showConfigList = false;
-                                            });
-                                            Button.fontSize(10);
-                                            Button.margin({ left: 10 });
-                                        }, Button);
-                                        Button.pop();
-                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                            Button.createWithLabel("删除");
-                                            Button.onClick(async () => {
-                                                try {
-                                                    await this.deleteConfig(config.id);
-                                                }
-                                                catch (error) {
-                                                    console.error('Failed to delete config:', error);
-                                                    try {
-                                                        this.showToast('删除配置失败', 2000);
-                                                    }
-                                                    catch (toastError) {
-                                                        console.error('Failed to show error toast:', toastError);
-                                                    }
-                                                }
-                                            });
-                                            Button.fontSize(10);
-                                            Button.backgroundColor('#ff453a');
-                                            Button.margin({ left: 5 });
-                                        }, Button);
-                                        Button.pop();
-                                        Row.pop();
-                                    };
-                                    this.forEachUpdateFunction(elmtId, this.configs, forEachItemGenFunction);
-                                }, ForEach);
-                                ForEach.pop();
-                                Column.pop();
-                            });
-                        }
-                        else {
-                            this.ifElseBranchUpdateFunction(1, () => {
-                            });
-                        }
-                    }, If);
-                    If.pop();
-                });
-            }
-            else {
-                this.ifElseBranchUpdateFunction(1, () => {
-                });
-            }
-        }, If);
-        If.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Tabs.create({ barPosition: BarPosition.End });
             Tabs.layoutWeight(1);
+            Tabs.scrollable(false);
         }, Tabs);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             TabContent.create(() => {
+                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                    Column.create();
+                    Column.width('100%');
+                    Column.height('100%');
+                }, Column);
+                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                    If.create();
+                    // 配置选择器
+                    if (this.configs.length > 0) {
+                        this.ifElseBranchUpdateFunction(0, () => {
+                            this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                Row.create();
+                                Row.width('90%');
+                                Row.padding(10);
+                                Row.backgroundColor(this.theme.cardBackground);
+                                Row.borderRadius(8);
+                                Row.margin({ top: 10 });
+                            }, Row);
+                            this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                Text.create("当前配置:");
+                                Text.fontColor(this.theme.textPrimary);
+                                Text.fontSize(14);
+                            }, Text);
+                            Text.pop();
+                            this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                Button.createWithLabel(this.currentConfig?.name || '请选择配置');
+                                Button.onClick(() => { this.showConfigList = !this.showConfigList; });
+                                Button.layoutWeight(1);
+                                Button.margin({ left: 10 });
+                            }, Button);
+                            Button.pop();
+                            Row.pop();
+                            this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                If.create();
+                                // 配置列表
+                                if (this.showConfigList) {
+                                    this.ifElseBranchUpdateFunction(0, () => {
+                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                            Column.create();
+                                            Column.width('90%');
+                                            Column.padding(10);
+                                            Column.backgroundColor(this.theme.cardBackground);
+                                            Column.borderRadius(8);
+                                            Column.margin({ top: 5 });
+                                        }, Column);
+                                        this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                            ForEach.create();
+                                            const forEachItemGenFunction = _item => {
+                                                const config = _item;
+                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    Row.create();
+                                                    Row.width('100%');
+                                                    Row.padding(8);
+                                                    Row.backgroundColor(this.theme.secondaryBackground);
+                                                    Row.borderRadius(6);
+                                                    Row.margin({ bottom: 5 });
+                                                }, Row);
+                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    Text.create(config.name);
+                                                    Text.fontColor(this.theme.textPrimary);
+                                                    Text.fontSize(14);
+                                                }, Text);
+                                                Text.pop();
+                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    Blank.create();
+                                                }, Blank);
+                                                Blank.pop();
+                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    If.create();
+                                                    if (this.currentConfig?.id === config.id) {
+                                                        this.ifElseBranchUpdateFunction(0, () => {
+                                                            this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                                Text.create("当前");
+                                                                Text.fontColor(this.theme.success);
+                                                                Text.fontSize(12);
+                                                            }, Text);
+                                                            Text.pop();
+                                                        });
+                                                    }
+                                                    else {
+                                                        this.ifElseBranchUpdateFunction(1, () => {
+                                                        });
+                                                    }
+                                                }, If);
+                                                If.pop();
+                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    Button.createWithLabel("选择");
+                                                    Button.onClick(async () => {
+                                                        try {
+                                                            await this.switchConfig(config.id);
+                                                        }
+                                                        catch (error) {
+                                                            console.error('Failed to switch config:', error);
+                                                            try {
+                                                                this.showToast('切换配置失败', 2000);
+                                                            }
+                                                            catch (toastError) {
+                                                                console.error('Failed to show error toast:', toastError);
+                                                            }
+                                                        }
+                                                        this.showConfigList = false;
+                                                    });
+                                                    Button.fontSize(10);
+                                                    Button.margin({ left: 10 });
+                                                }, Button);
+                                                Button.pop();
+                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    Button.createWithLabel("删除");
+                                                    Button.onClick(async () => {
+                                                        try {
+                                                            await this.deleteConfig(config.id);
+                                                        }
+                                                        catch (error) {
+                                                            console.error('Failed to delete config:', error);
+                                                            try {
+                                                                this.showToast('删除配置失败', 2000);
+                                                            }
+                                                            catch (toastError) {
+                                                                console.error('Failed to show error toast:', toastError);
+                                                            }
+                                                        }
+                                                    });
+                                                    Button.fontSize(10);
+                                                    Button.backgroundColor(this.theme.error);
+                                                    Button.margin({ left: 5 });
+                                                }, Button);
+                                                Button.pop();
+                                                Row.pop();
+                                            };
+                                            this.forEachUpdateFunction(elmtId, this.configs, forEachItemGenFunction);
+                                        }, ForEach);
+                                        ForEach.pop();
+                                        Column.pop();
+                                    });
+                                }
+                                else {
+                                    this.ifElseBranchUpdateFunction(1, () => {
+                                    });
+                                }
+                            }, If);
+                            If.pop();
+                        });
+                    }
+                    // 监控列表
+                    else {
+                        this.ifElseBranchUpdateFunction(1, () => {
+                        });
+                    }
+                }, If);
+                If.pop();
                 {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         if (isInitialRender) {
-                            let componentCall = new ChargerMonitorUI(this, {
+                            let componentCall = new 
+                            // 监控列表
+                            ChargerMonitorUI(this, {
                                 stationConfig: this.__stationConfig,
                                 configs: this.__configs,
-                                currentConfig: this.__currentConfig
-                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 235, col: 11 });
+                                currentConfig: this.__currentConfig,
+                                theme: this.theme
+                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 316, col: 13 });
                             ViewPU.create(componentCall);
                             let paramsLambda = () => {
                                 return {
                                     stationConfig: this.stationConfig,
                                     configs: this.configs,
-                                    currentConfig: this.currentConfig
+                                    currentConfig: this.currentConfig,
+                                    theme: this.theme
                                 };
                             };
                             componentCall.paramsGenerator_ = paramsLambda;
                         }
                         else {
-                            this.updateStateVarsOfChildByElmtId(elmtId, {});
+                            this.updateStateVarsOfChildByElmtId(elmtId, {
+                                theme: this.theme
+                            });
                         }
                     }, { name: "ChargerMonitorUI" });
                 }
+                Column.pop();
             });
             TabContent.tabBar("监控");
         }, TabContent);
@@ -476,16 +622,47 @@ class MainApp extends ViewPU {
                 {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         if (isInitialRender) {
+                            let componentCall = new MapViewerUI(this, {}, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 328, col: 11 });
+                            ViewPU.create(componentCall);
+                            let paramsLambda = () => {
+                                return {};
+                            };
+                            componentCall.paramsGenerator_ = paramsLambda;
+                        }
+                        else {
+                            this.updateStateVarsOfChildByElmtId(elmtId, {});
+                        }
+                    }, { name: "MapViewerUI" });
+                }
+            });
+            TabContent.tabBar("地图");
+        }, TabContent);
+        TabContent.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            TabContent.create(() => {
+                {
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        if (isInitialRender) {
                             let componentCall = new StationPickerUI(this, {
                                 stationConfig: this.__stationConfig,
+                                theme: this.theme,
+                                themeMode: this.themeMode,
+                                onThemeChange: (mode: ThemeMode) => {
+                                    this.setThemeMode(mode);
+                                },
                                 onSaveConfig: (newConfig: Record<string, number>) => {
                                     this.handleSaveConfigRequest(newConfig);
                                 }
-                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 243, col: 11 });
+                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 332, col: 11 });
                             ViewPU.create(componentCall);
                             let paramsLambda = () => {
                                 return {
                                     stationConfig: this.stationConfig,
+                                    theme: this.theme,
+                                    themeMode: this.themeMode,
+                                    onThemeChange: (mode: ThemeMode) => {
+                                        this.setThemeMode(mode);
+                                    },
                                     onSaveConfig: (newConfig: Record<string, number>) => {
                                         this.handleSaveConfigRequest(newConfig);
                                     }
@@ -494,12 +671,15 @@ class MainApp extends ViewPU {
                             componentCall.paramsGenerator_ = paramsLambda;
                         }
                         else {
-                            this.updateStateVarsOfChildByElmtId(elmtId, {});
+                            this.updateStateVarsOfChildByElmtId(elmtId, {
+                                theme: this.theme,
+                                themeMode: this.themeMode
+                            });
                         }
                     }, { name: "StationPickerUI" });
                 }
             });
-            TabContent.tabBar("设置站点");
+            TabContent.tabBar("设置");
         }, TabContent);
         TabContent.pop();
         Tabs.pop();
@@ -512,7 +692,7 @@ class MainApp extends ViewPU {
                         Column.create();
                         Column.width(300);
                         Column.padding(20);
-                        Column.backgroundColor('#1c1c1e');
+                        Column.backgroundColor(this.theme.cardBackground);
                         Column.borderRadius(12);
                         Column.alignItems(HorizontalAlign.Center);
                         Column.position({ x: '50%', y: '40%' });
@@ -520,7 +700,7 @@ class MainApp extends ViewPU {
                     }, Column);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create("配置名称");
-                        Text.fontColor(Color.White);
+                        Text.fontColor(this.theme.textPrimary);
                         Text.fontSize(16);
                         Text.fontWeight(FontWeight.Bold);
                     }, Text);
@@ -530,8 +710,8 @@ class MainApp extends ViewPU {
                         TextInput.onChange((value) => { this.configDialogText = value; });
                         TextInput.width('100%');
                         TextInput.height(40);
-                        TextInput.backgroundColor('#2c2c2e');
-                        TextInput.fontColor(Color.White);
+                        TextInput.backgroundColor(this.theme.secondaryBackground);
+                        TextInput.fontColor(this.theme.textPrimary);
                         TextInput.margin({ top: 10, bottom: 10 });
                     }, TextInput);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
@@ -545,7 +725,7 @@ class MainApp extends ViewPU {
                             this.configDialogText = "";
                             this.pendingConfig = {};
                         });
-                        Button.backgroundColor('#48484a');
+                        Button.backgroundColor(this.theme.tertiaryBackground);
                         Button.layoutWeight(1);
                         Button.margin({ right: 10 });
                     }, Button);
@@ -566,7 +746,7 @@ class MainApp extends ViewPU {
                                 }
                             }
                         });
-                        Button.backgroundColor('#0a84ff');
+                        Button.backgroundColor(this.theme.accent);
                         Button.layoutWeight(1);
                     }, Button);
                     Button.pop();
@@ -598,6 +778,7 @@ class ChargerMonitorUI extends ViewPU {
         this.__stationConfig = new SynchedPropertyObjectTwoWayPU(params.stationConfig, this, "stationConfig");
         this.__configs = new SynchedPropertyObjectTwoWayPU(params.configs, this, "configs");
         this.__currentConfig = new SynchedPropertyObjectTwoWayPU(params.currentConfig, this, "currentConfig");
+        this.__theme = new SynchedPropertyObjectOneWayPU(params.theme, this, "theme");
         this.__isExpanded = new ObservedPropertySimplePU(false, this, "isExpanded");
         this.__stations = new ObservedPropertyObjectPU([], this, "stations");
         this.__searchText = new ObservedPropertySimplePU("", this, "searchText");
@@ -616,6 +797,9 @@ class ChargerMonitorUI extends ViewPU {
         this.finalizeConstruction();
     }
     setInitiallyProvidedValue(params: ChargerMonitorUI_Params) {
+        if (params.theme === undefined) {
+            this.__theme.set(ThemeManager.getDarkColors());
+        }
         if (params.isExpanded !== undefined) {
             this.isExpanded = params.isExpanded;
         }
@@ -657,11 +841,13 @@ class ChargerMonitorUI extends ViewPU {
         }
     }
     updateStateVars(params: ChargerMonitorUI_Params) {
+        this.__theme.reset(params.theme);
     }
     purgeVariableDependenciesOnElmtId(rmElmtId) {
         this.__stationConfig.purgeDependencyOnElmtId(rmElmtId);
         this.__configs.purgeDependencyOnElmtId(rmElmtId);
         this.__currentConfig.purgeDependencyOnElmtId(rmElmtId);
+        this.__theme.purgeDependencyOnElmtId(rmElmtId);
         this.__isExpanded.purgeDependencyOnElmtId(rmElmtId);
         this.__stations.purgeDependencyOnElmtId(rmElmtId);
         this.__searchText.purgeDependencyOnElmtId(rmElmtId);
@@ -677,6 +863,7 @@ class ChargerMonitorUI extends ViewPU {
         this.__stationConfig.aboutToBeDeleted();
         this.__configs.aboutToBeDeleted();
         this.__currentConfig.aboutToBeDeleted();
+        this.__theme.aboutToBeDeleted();
         this.__isExpanded.aboutToBeDeleted();
         this.__stations.aboutToBeDeleted();
         this.__searchText.aboutToBeDeleted();
@@ -722,6 +909,14 @@ class ChargerMonitorUI extends ViewPU {
     }
     set currentConfig(newValue: ChargerConfig | null) {
         this.__currentConfig.set(newValue);
+    }
+    // 主题参数
+    private __theme: SynchedPropertySimpleOneWayPU<ThemeColors>;
+    get theme() {
+        return this.__theme.get();
+    }
+    set theme(newValue: ThemeColors) {
+        this.__theme.set(newValue);
     }
     private __isExpanded: ObservedPropertySimplePU<boolean>;
     get isExpanded() {
@@ -1040,8 +1235,8 @@ class ChargerMonitorUI extends ViewPU {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Text.create(text);
             Text.fontSize(10);
-            Text.fontColor(this.sortMode === mode ? '#0a84ff' : Color.White);
-            Text.backgroundColor(this.sortMode === mode ? '#1c1c1e' : 'transparent');
+            Text.fontColor(this.sortMode === mode ? this.theme.accent : this.theme.textPrimary);
+            Text.backgroundColor(this.sortMode === mode ? this.theme.cardBackground : 'transparent');
             Text.width('100%');
             Text.height(24);
             Text.textAlign(TextAlign.Start);
@@ -1058,12 +1253,12 @@ class ChargerMonitorUI extends ViewPU {
             Column.create();
             Column.width('100%');
             Column.height('100%');
-            Column.backgroundColor('#000000');
+            Column.backgroundColor(this.theme.background);
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create();
             Column.width('100%');
-            Column.backgroundColor('#000000');
+            Column.backgroundColor(this.theme.background);
             Column.borderRadius(12);
             Column.margin({ top: 10 });
         }, Column);
@@ -1085,7 +1280,7 @@ class ChargerMonitorUI extends ViewPU {
                 this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create("正在获取数据…");
-                        Text.fontColor('#b4b4b4');
+                        Text.fontColor(this.theme.textTertiary);
                         Text.fontSize(14);
                     }, Text);
                     Text.pop();
@@ -1095,12 +1290,12 @@ class ChargerMonitorUI extends ViewPU {
                 this.ifElseBranchUpdateFunction(1, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Circle.create({ width: 12, height: 12 });
-                        Circle.fill(this.getStats().anyFree ? '#30d158' : '#ff453a');
+                        Circle.fill(this.getStats().anyFree ? this.theme.success : this.theme.error);
                         Circle.margin({ right: 10 });
                     }, Circle);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create(this.getStats().anyFree ? "有空闲插座" : "全部占用");
-                        Text.fontColor(Color.White);
+                        Text.fontColor(this.theme.textPrimary);
                         Text.fontSize(16);
                         Text.fontWeight(FontWeight.Medium);
                     }, Text);
@@ -1111,7 +1306,7 @@ class ChargerMonitorUI extends ViewPU {
                     Blank.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create(`${this.getStats().free}/${this.getStats().total}`);
-                        Text.fontColor(this.getStats().anyFree ? '#30d158' : '#ff453a');
+                        Text.fontColor(this.getStats().anyFree ? this.theme.success : this.theme.error);
                         Text.fontSize(16);
                         Text.fontWeight(FontWeight.Bold);
                     }, Text);
@@ -1143,9 +1338,9 @@ class ChargerMonitorUI extends ViewPU {
             // 刷新按钮
             Button.fontSize(12);
             // 刷新按钮
-            Button.backgroundColor(this.canRefresh ? '#0a84ff' : '#48484a');
+            Button.backgroundColor(this.canRefresh ? this.theme.accent : this.theme.tertiaryBackground);
             // 刷新按钮
-            Button.fontColor(Color.White);
+            Button.fontColor('#ffffff');
             // 刷新按钮
             Button.width(60);
             // 刷新按钮
@@ -1165,7 +1360,7 @@ class ChargerMonitorUI extends ViewPU {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Column.create();
                         Column.width('100%');
-                        Column.backgroundColor('#000000');
+                        Column.backgroundColor(this.theme.background);
                         Column.padding({ left: 10, right: 10 });
                         Column.height(this.getExpandedHeight());
                     }, Column);
@@ -1173,8 +1368,8 @@ class ChargerMonitorUI extends ViewPU {
                         TextInput.create({ placeholder: '搜索站点名称…', text: this.searchText });
                         TextInput.onChange((value) => { this.searchText = value; });
                         TextInput.height(36);
-                        TextInput.backgroundColor('rgba(0,0,0,0.5)');
-                        TextInput.fontColor(Color.White);
+                        TextInput.backgroundColor(this.theme.overlay);
+                        TextInput.fontColor(this.theme.textPrimary);
                         TextInput.margin({ top: 10, bottom: 10 });
                     }, TextInput);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
@@ -1189,7 +1384,7 @@ class ChargerMonitorUI extends ViewPU {
                     }, Row);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create("排序:");
-                        Text.fontColor('#8e8e93');
+                        Text.fontColor(this.theme.textSecondary);
                         Text.fontSize(12);
                         Text.margin({ right: 10 });
                     }, Text);
@@ -1200,8 +1395,8 @@ class ChargerMonitorUI extends ViewPU {
                             this.showSortMenu = !this.showSortMenu;
                         });
                         Button.fontSize(10);
-                        Button.backgroundColor('#48484a');
-                        Button.fontColor(Color.White);
+                        Button.backgroundColor(this.theme.tertiaryBackground);
+                        Button.fontColor(this.theme.textPrimary);
                         Button.width(80);
                         Button.height(24);
                         Button.borderRadius(4);
@@ -1216,7 +1411,7 @@ class ChargerMonitorUI extends ViewPU {
                             this.ifElseBranchUpdateFunction(0, () => {
                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                     Column.create();
-                                    Column.backgroundColor('#2c2c2e');
+                                    Column.backgroundColor(this.theme.secondaryBackground);
                                     Column.borderRadius(4);
                                     Column.width(100);
                                     Column.margin({ bottom: 10 });
@@ -1238,7 +1433,7 @@ class ChargerMonitorUI extends ViewPU {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         List.create({ space: 10 });
                         List.height(this.getExpandedHeight() - 160);
-                        List.backgroundColor('#000000');
+                        List.backgroundColor(this.theme.background);
                         List.padding({ left: 10, right: 10 });
                     }, List);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
@@ -1261,7 +1456,7 @@ class ChargerMonitorUI extends ViewPU {
                                     itemCreation(elmtId, isInitialRender);
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Column.create();
-                                        Column.backgroundColor('#1c1c1e');
+                                        Column.backgroundColor(this.theme.cardBackground);
                                         Column.borderRadius(8);
                                         Column.padding(0);
                                     }, Column);
@@ -1269,11 +1464,11 @@ class ChargerMonitorUI extends ViewPU {
                                         Row.create();
                                         Row.width('100%');
                                         Row.padding(12);
-                                        Row.border({ width: { bottom: 1 }, color: 'rgba(255,255,255,0.05)' });
+                                        Row.border({ width: { bottom: 1 }, color: this.theme.border });
                                     }, Row);
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Text.create(item.station.name);
-                                        Text.fontColor(Color.White);
+                                        Text.fontColor(this.theme.textPrimary);
                                         Text.fontSize(14);
                                         Text.fontWeight(FontWeight.Bold);
                                     }, Text);
@@ -1284,7 +1479,7 @@ class ChargerMonitorUI extends ViewPU {
                                     Blank.pop();
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Text.create(` ${item.freeCount}/${item.station.outlets.length} `);
-                                        Text.fontColor(item.freeCount > 0 ? '#30d158' : '#ff453a');
+                                        Text.fontColor(item.freeCount > 0 ? this.theme.success : this.theme.error);
                                         Text.backgroundColor(item.freeCount > 0 ? 'rgba(48,209,88,0.15)' : 'rgba(255,69,58,0.15)');
                                         Text.borderRadius(10);
                                         Text.fontSize(12);
@@ -1306,13 +1501,13 @@ class ChargerMonitorUI extends ViewPU {
                                             }, Row);
                                             this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                 Rect.create({ width: 3, height: 20 });
-                                                Rect.fill(outlet.status === 1 ? '#30d158' : (outlet.status === 2 ? '#ff453a' : '#ffd60a'));
+                                                Rect.fill(outlet.status === 1 ? this.theme.success : (outlet.status === 2 ? this.theme.error : '#ffd60a'));
                                                 Rect.radius(1.5);
                                                 Rect.margin({ right: 10 });
                                             }, Rect);
                                             this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                 Text.create(`插座${outlet.serial}`);
-                                                Text.fontColor(Color.White);
+                                                Text.fontColor(this.theme.textPrimary);
                                                 Text.fontSize(13);
                                             }, Text);
                                             Text.pop();
@@ -1330,7 +1525,7 @@ class ChargerMonitorUI extends ViewPU {
                                                                 this.ifElseBranchUpdateFunction(0, () => {
                                                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                                         Text.create(`${outlet.power_w}W`);
-                                                                        __Text__chipStyle('#0a84ff');
+                                                                        __Text__chipStyle(this.theme.accent);
                                                                     }, Text);
                                                                     Text.pop();
                                                                 });
@@ -1347,7 +1542,7 @@ class ChargerMonitorUI extends ViewPU {
                                                                 this.ifElseBranchUpdateFunction(0, () => {
                                                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                                         Text.create(`¥${outlet.fee.toFixed(2)}`);
-                                                                        __Text__chipStyle('#30d158');
+                                                                        __Text__chipStyle(this.theme.success);
                                                                     }, Text);
                                                                     Text.pop();
                                                                 });
@@ -1381,7 +1576,7 @@ class ChargerMonitorUI extends ViewPU {
                                                     this.ifElseBranchUpdateFunction(1, () => {
                                                         this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                             Text.create(outlet.status === 1 ? '空闲' : '故障');
-                                                            __Text__chipStyle(outlet.status === 1 ? '#30d158' : '#ff453a');
+                                                            __Text__chipStyle(outlet.status === 1 ? this.theme.success : this.theme.error);
                                                         }, Text);
                                                         Text.pop();
                                                     });
@@ -1429,6 +1624,9 @@ class StationPickerUI extends ViewPU {
         }
         this.__stationConfig = new SynchedPropertyObjectTwoWayPU(params.stationConfig, this, "stationConfig");
         this.onSaveConfig = undefined;
+        this.onThemeChange = undefined;
+        this.__theme = new SynchedPropertyObjectOneWayPU(params.theme, this, "theme");
+        this.__themeMode = new SynchedPropertySimpleOneWayPU(params.themeMode, this, "themeMode");
         this.__allStations = new ObservedPropertyObjectPU([], this, "allStations");
         this.__searchText = new ObservedPropertySimplePU("", this, "searchText");
         this.__selectedIds = new ObservedPropertyObjectPU([], this, "selectedIds");
@@ -1442,6 +1640,15 @@ class StationPickerUI extends ViewPU {
     setInitiallyProvidedValue(params: StationPickerUI_Params) {
         if (params.onSaveConfig !== undefined) {
             this.onSaveConfig = params.onSaveConfig;
+        }
+        if (params.onThemeChange !== undefined) {
+            this.onThemeChange = params.onThemeChange;
+        }
+        if (params.theme === undefined) {
+            this.__theme.set(ThemeManager.getDarkColors());
+        }
+        if (params.themeMode === undefined) {
+            this.__themeMode.set(ThemeMode.SYSTEM);
         }
         if (params.allStations !== undefined) {
             this.allStations = params.allStations;
@@ -1466,9 +1673,13 @@ class StationPickerUI extends ViewPU {
         }
     }
     updateStateVars(params: StationPickerUI_Params) {
+        this.__theme.reset(params.theme);
+        this.__themeMode.reset(params.themeMode);
     }
     purgeVariableDependenciesOnElmtId(rmElmtId) {
         this.__stationConfig.purgeDependencyOnElmtId(rmElmtId);
+        this.__theme.purgeDependencyOnElmtId(rmElmtId);
+        this.__themeMode.purgeDependencyOnElmtId(rmElmtId);
         this.__allStations.purgeDependencyOnElmtId(rmElmtId);
         this.__searchText.purgeDependencyOnElmtId(rmElmtId);
         this.__selectedIds.purgeDependencyOnElmtId(rmElmtId);
@@ -1478,6 +1689,8 @@ class StationPickerUI extends ViewPU {
     }
     aboutToBeDeleted() {
         this.__stationConfig.aboutToBeDeleted();
+        this.__theme.aboutToBeDeleted();
+        this.__themeMode.aboutToBeDeleted();
         this.__allStations.aboutToBeDeleted();
         this.__searchText.aboutToBeDeleted();
         this.__selectedIds.aboutToBeDeleted();
@@ -1508,6 +1721,23 @@ class StationPickerUI extends ViewPU {
     }
     // 保存配置的回调函数
     private onSaveConfig?: (newConfig: Record<string, number>) => void;
+    // 主题切换回调
+    private onThemeChange?: (mode: ThemeMode) => void;
+    // 主题参数
+    private __theme: SynchedPropertySimpleOneWayPU<ThemeColors>;
+    get theme() {
+        return this.__theme.get();
+    }
+    set theme(newValue: ThemeColors) {
+        this.__theme.set(newValue);
+    }
+    private __themeMode: SynchedPropertySimpleOneWayPU<ThemeMode>;
+    get themeMode() {
+        return this.__themeMode.get();
+    }
+    set themeMode(newValue: ThemeMode) {
+        this.__themeMode.set(newValue);
+    }
     private __allStations: ObservedPropertyObjectPU<StationBrief[]>;
     get allStations() {
         return this.__allStations.get();
@@ -1690,8 +1920,93 @@ class StationPickerUI extends ViewPU {
             Column.create();
             Column.width('100%');
             Column.height('100%');
-            Column.backgroundColor('#000000');
+            Column.backgroundColor(this.theme.background);
         }, Column);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            // 主题设置区域
+            Column.create();
+            // 主题设置区域
+            Column.width('100%');
+        }, Column);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Text.create('外观设置');
+            Text.fontColor(this.theme.textPrimary);
+            Text.fontSize(16);
+            Text.fontWeight(FontWeight.Bold);
+            Text.width('90%');
+            Text.margin({ top: 16, bottom: 8 });
+        }, Text);
+        Text.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Row.create();
+            Row.width('90%');
+            Row.margin({ bottom: 16 });
+        }, Row);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Button.createWithLabel('跟随系统');
+            Button.fontSize(13);
+            Button.height(36);
+            Button.layoutWeight(1);
+            Button.backgroundColor(this.themeMode === ThemeMode.SYSTEM ? this.theme.accent : this.theme.secondaryBackground);
+            Button.fontColor(this.themeMode === ThemeMode.SYSTEM ? '#ffffff' : this.theme.textPrimary);
+            Button.borderRadius(8);
+            Button.onClick(() => {
+                if (this.onThemeChange) {
+                    this.onThemeChange(ThemeMode.SYSTEM);
+                }
+            });
+        }, Button);
+        Button.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Button.createWithLabel('深色模式');
+            Button.fontSize(13);
+            Button.height(36);
+            Button.layoutWeight(1);
+            Button.backgroundColor(this.themeMode === ThemeMode.DARK ? this.theme.accent : this.theme.secondaryBackground);
+            Button.fontColor(this.themeMode === ThemeMode.DARK ? '#ffffff' : this.theme.textPrimary);
+            Button.borderRadius(8);
+            Button.margin({ left: 4, right: 4 });
+            Button.onClick(() => {
+                if (this.onThemeChange) {
+                    this.onThemeChange(ThemeMode.DARK);
+                }
+            });
+        }, Button);
+        Button.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Button.createWithLabel('浅色模式');
+            Button.fontSize(13);
+            Button.height(36);
+            Button.layoutWeight(1);
+            Button.backgroundColor(this.themeMode === ThemeMode.LIGHT ? this.theme.accent : this.theme.secondaryBackground);
+            Button.fontColor(this.themeMode === ThemeMode.LIGHT ? '#ffffff' : this.theme.textPrimary);
+            Button.borderRadius(8);
+            Button.onClick(() => {
+                if (this.onThemeChange) {
+                    this.onThemeChange(ThemeMode.LIGHT);
+                }
+            });
+        }, Button);
+        Button.pop();
+        Row.pop();
+        // 主题设置区域
+        Column.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            // 站点设置标题
+            Text.create('站点配置');
+            // 站点设置标题
+            Text.fontColor(this.theme.textPrimary);
+            // 站点设置标题
+            Text.fontSize(16);
+            // 站点设置标题
+            Text.fontWeight(FontWeight.Bold);
+            // 站点设置标题
+            Text.width('90%');
+            // 站点设置标题
+            Text.margin({ bottom: 8 });
+        }, Text);
+        // 站点设置标题
+        Text.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             // 搜索框
             TextInput.create({ placeholder: '搜索站点名称…', text: this.searchText });
@@ -1702,13 +2017,13 @@ class StationPickerUI extends ViewPU {
             // 搜索框
             TextInput.height(40);
             // 搜索框
-            TextInput.backgroundColor('#2c2c2e');
+            TextInput.backgroundColor(this.theme.secondaryBackground);
             // 搜索框
-            TextInput.fontColor(Color.White);
+            TextInput.fontColor(this.theme.textPrimary);
             // 搜索框
             TextInput.borderRadius(8);
             // 搜索框
-            TextInput.margin({ top: 16, bottom: 8 });
+            TextInput.margin({ bottom: 8 });
         }, TextInput);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             If.create();
@@ -1717,7 +2032,7 @@ class StationPickerUI extends ViewPU {
                 this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create(this.locationStatus);
-                        Text.fontColor('#8e8e93');
+                        Text.fontColor(this.theme.textSecondary);
                         Text.fontSize(12);
                         Text.width('90%');
                         Text.margin({ bottom: 8 });
@@ -1745,10 +2060,12 @@ class StationPickerUI extends ViewPU {
                     }, Row);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         LoadingProgress.create();
+                        LoadingProgress.width(24);
+                        LoadingProgress.height(24);
                     }, LoadingProgress);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create(this.loadingMessage);
-                        Text.fontColor(Color.White);
+                        Text.fontColor(this.theme.textPrimary);
                         Text.fontSize(14);
                         Text.margin({ left: 10 });
                     }, Text);
@@ -1775,7 +2092,7 @@ class StationPickerUI extends ViewPU {
                     Text.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create('未找到附近充电站');
-                        Text.fontColor(Color.White);
+                        Text.fontColor(this.theme.textPrimary);
                         Text.fontSize(16);
                     }, Text);
                     Text.pop();
@@ -1785,7 +2102,7 @@ class StationPickerUI extends ViewPU {
                             this.ifElseBranchUpdateFunction(0, () => {
                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                     Text.create('请确保设备定位服务已开启');
-                                    Text.fontColor('#8e8e93');
+                                    Text.fontColor(this.theme.textSecondary);
                                     Text.fontSize(14);
                                 }, Text);
                                 Text.pop();
@@ -1803,7 +2120,7 @@ class StationPickerUI extends ViewPU {
                             this.ifElseBranchUpdateFunction(0, () => {
                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                     Text.create('请检查网络连接');
-                                    Text.fontColor('#8e8e93');
+                                    Text.fontColor(this.theme.textSecondary);
                                     Text.fontSize(14);
                                 }, Text);
                                 Text.pop();
@@ -1820,9 +2137,9 @@ class StationPickerUI extends ViewPU {
                         // 刷新按钮
                         Button.createWithLabel('刷新');
                         // 刷新按钮
-                        Button.backgroundColor('#30d158');
+                        Button.backgroundColor(this.theme.success);
                         // 刷新按钮
-                        Button.fontColor(Color.White);
+                        Button.fontColor('#ffffff');
                         // 刷新按钮
                         Button.width(120);
                         // 刷新按钮
@@ -1872,7 +2189,7 @@ class StationPickerUI extends ViewPU {
                                         Row.create();
                                         Row.width('100%');
                                         Row.padding(16);
-                                        Row.backgroundColor('#1c1c1e');
+                                        Row.backgroundColor(this.theme.cardBackground);
                                         Row.borderRadius(8);
                                     }, Row);
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
@@ -1902,7 +2219,7 @@ class StationPickerUI extends ViewPU {
                                     }, Column);
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Text.create(station.stationName);
-                                        Text.fontColor(Color.White);
+                                        Text.fontColor(this.theme.textPrimary);
                                         Text.fontSize(16);
                                         Text.fontWeight(FontWeight.Medium);
                                     }, Text);
@@ -1913,7 +2230,7 @@ class StationPickerUI extends ViewPU {
                                             this.ifElseBranchUpdateFunction(0, () => {
                                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                     Text.create(station.address);
-                                                    Text.fontColor('#8e8e93');
+                                                    Text.fontColor(this.theme.textSecondary);
                                                     Text.fontSize(12);
                                                 }, Text);
                                                 Text.pop();
@@ -1933,7 +2250,7 @@ class StationPickerUI extends ViewPU {
                                             this.ifElseBranchUpdateFunction(0, () => {
                                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                     Text.create(`距离: ${station.formattedDistance}`);
-                                                    Text.fontColor('#30d158');
+                                                    Text.fontColor(this.theme.success);
                                                     Text.fontSize(11);
                                                 }, Text);
                                                 Text.pop();
@@ -1971,7 +2288,7 @@ class StationPickerUI extends ViewPU {
             // 保存按钮
             Button.margin(16);
             // 保存按钮
-            Button.backgroundColor('#30d158');
+            Button.backgroundColor(this.theme.success);
             // 保存按钮
             Button.onClick(() => this.saveConfig());
         }, Button);
@@ -2008,5 +2325,280 @@ function __Text__chipStyle(bgColor: string): void {
     Text.padding({ left: 6, right: 6, top: 2, bottom: 2 });
     Text.borderRadius(8);
     Text.margin({ right: 5 });
+}
+class MapViewerUI extends ViewPU {
+    constructor(parent, params, __localStorage, elmtId = -1, paramsLambda = undefined, extraInfo) {
+        super(parent, __localStorage, elmtId, extraInfo);
+        if (typeof paramsLambda === "function") {
+            this.paramsGenerator_ = paramsLambda;
+        }
+        this.__scaleValue = new ObservedPropertySimplePU(1.0, this, "scaleValue");
+        this.__pinchValue = new ObservedPropertySimplePU(1.0, this, "pinchValue");
+        this.__offsetX = new ObservedPropertySimplePU(0, this, "offsetX");
+        this.__offsetY = new ObservedPropertySimplePU(0, this, "offsetY");
+        this.__lastOffsetX = new ObservedPropertySimplePU(0, this, "lastOffsetX");
+        this.__lastOffsetY = new ObservedPropertySimplePU(0, this, "lastOffsetY");
+        this.minScale = 0.5;
+        this.maxScale = 5.0;
+        this.dragSensitivity = 2.5;
+        this.setInitiallyProvidedValue(params);
+        this.finalizeConstruction();
+    }
+    setInitiallyProvidedValue(params: MapViewerUI_Params) {
+        if (params.scaleValue !== undefined) {
+            this.scaleValue = params.scaleValue;
+        }
+        if (params.pinchValue !== undefined) {
+            this.pinchValue = params.pinchValue;
+        }
+        if (params.offsetX !== undefined) {
+            this.offsetX = params.offsetX;
+        }
+        if (params.offsetY !== undefined) {
+            this.offsetY = params.offsetY;
+        }
+        if (params.lastOffsetX !== undefined) {
+            this.lastOffsetX = params.lastOffsetX;
+        }
+        if (params.lastOffsetY !== undefined) {
+            this.lastOffsetY = params.lastOffsetY;
+        }
+        if (params.minScale !== undefined) {
+            this.minScale = params.minScale;
+        }
+        if (params.maxScale !== undefined) {
+            this.maxScale = params.maxScale;
+        }
+        if (params.dragSensitivity !== undefined) {
+            this.dragSensitivity = params.dragSensitivity;
+        }
+    }
+    updateStateVars(params: MapViewerUI_Params) {
+    }
+    purgeVariableDependenciesOnElmtId(rmElmtId) {
+        this.__scaleValue.purgeDependencyOnElmtId(rmElmtId);
+        this.__pinchValue.purgeDependencyOnElmtId(rmElmtId);
+        this.__offsetX.purgeDependencyOnElmtId(rmElmtId);
+        this.__offsetY.purgeDependencyOnElmtId(rmElmtId);
+        this.__lastOffsetX.purgeDependencyOnElmtId(rmElmtId);
+        this.__lastOffsetY.purgeDependencyOnElmtId(rmElmtId);
+    }
+    aboutToBeDeleted() {
+        this.__scaleValue.aboutToBeDeleted();
+        this.__pinchValue.aboutToBeDeleted();
+        this.__offsetX.aboutToBeDeleted();
+        this.__offsetY.aboutToBeDeleted();
+        this.__lastOffsetX.aboutToBeDeleted();
+        this.__lastOffsetY.aboutToBeDeleted();
+        SubscriberManager.Get().delete(this.id__());
+        this.aboutToBeDeletedInternal();
+    }
+    // 缩放比例
+    private __scaleValue: ObservedPropertySimplePU<number>;
+    get scaleValue() {
+        return this.__scaleValue.get();
+    }
+    set scaleValue(newValue: number) {
+        this.__scaleValue.set(newValue);
+    }
+    // 上次缩放值（用于双指缩放计算）
+    private __pinchValue: ObservedPropertySimplePU<number>;
+    get pinchValue() {
+        return this.__pinchValue.get();
+    }
+    set pinchValue(newValue: number) {
+        this.__pinchValue.set(newValue);
+    }
+    // X轴偏移
+    private __offsetX: ObservedPropertySimplePU<number>;
+    get offsetX() {
+        return this.__offsetX.get();
+    }
+    set offsetX(newValue: number) {
+        this.__offsetX.set(newValue);
+    }
+    // Y轴偏移
+    private __offsetY: ObservedPropertySimplePU<number>;
+    get offsetY() {
+        return this.__offsetY.get();
+    }
+    set offsetY(newValue: number) {
+        this.__offsetY.set(newValue);
+    }
+    // 上次X偏移（用于单指移动计算）
+    private __lastOffsetX: ObservedPropertySimplePU<number>;
+    get lastOffsetX() {
+        return this.__lastOffsetX.get();
+    }
+    set lastOffsetX(newValue: number) {
+        this.__lastOffsetX.set(newValue);
+    }
+    // 上次Y偏移（用于单指移动计算）
+    private __lastOffsetY: ObservedPropertySimplePU<number>;
+    get lastOffsetY() {
+        return this.__lastOffsetY.get();
+    }
+    set lastOffsetY(newValue: number) {
+        this.__lastOffsetY.set(newValue);
+    }
+    // 最小缩放比例
+    private minScale: number;
+    // 最大缩放比例
+    private maxScale: number;
+    // 拖动灵敏度系数
+    private dragSensitivity: number;
+    initialRender() {
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Column.create();
+            Column.width('100%');
+            Column.height('100%');
+            Column.backgroundColor('#1a1a1c');
+        }, Column);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            // 提示信息和重置按钮
+            Row.create();
+            // 提示信息和重置按钮
+            Row.width('95%');
+            // 提示信息和重置按钮
+            Row.padding({ top: 10, bottom: 10 });
+        }, Row);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Text.create("双指缩放 | 单指拖动");
+            Text.fontColor('#888888');
+            Text.fontSize(12);
+        }, Text);
+        Text.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Blank.create();
+        }, Blank);
+        Blank.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Text.create(`缩放: ${(this.scaleValue * 100).toFixed(0)}%`);
+            Text.fontColor('#888888');
+            Text.fontSize(12);
+            Text.margin({ right: 15 });
+        }, Text);
+        Text.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            // 重置按钮
+            Button.createWithLabel("重置");
+            // 重置按钮
+            Button.fontSize(12);
+            // 重置按钮
+            Button.height(28);
+            // 重置按钮
+            Button.padding({ left: 10, right: 10 });
+            // 重置按钮
+            Button.backgroundColor('#48484a');
+            // 重置按钮
+            Button.onClick(() => {
+                this.resetView();
+            });
+        }, Button);
+        // 重置按钮
+        Button.pop();
+        // 提示信息和重置按钮
+        Row.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            // 地图显示区域
+            Stack.create();
+            // 地图显示区域
+            Stack.width('100%');
+            // 地图显示区域
+            Stack.layoutWeight(1);
+            // 地图显示区域
+            Stack.clip(true);
+        }, Stack);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Image.create({ "id": 16777229, "type": 20000, params: [], "bundleName": "com.example.uestc_charger_monitor", "moduleName": "entry" });
+            Image.width('100%');
+            Image.height('100%');
+            Image.objectFit(ImageFit.Contain);
+            Image.scale({ x: this.scaleValue, y: this.scaleValue });
+            Image.translate({ x: this.offsetX, y: this.offsetY });
+            globalThis.Gesture.create(GesturePriority.Low);
+            GestureGroup.create(GestureMode.Parallel);
+            // 双指缩放手势
+            PinchGesture.create({ fingers: 2 });
+            // 双指缩放手势
+            PinchGesture.onActionStart(() => {
+                this.pinchValue = this.scaleValue;
+            });
+            // 双指缩放手势
+            PinchGesture.onActionUpdate((event: GestureEvent) => {
+                let newScale = this.pinchValue * event.scale;
+                // 限制缩放范围
+                newScale = Math.max(this.minScale, Math.min(this.maxScale, newScale));
+                this.scaleValue = newScale;
+                // 缩放时调整偏移量
+                this.adjustOffsetOnScale();
+            });
+            // 双指缩放手势
+            PinchGesture.onActionEnd(() => {
+                this.pinchValue = this.scaleValue;
+            });
+            // 双指缩放手势
+            PinchGesture.pop();
+            // 单指拖动手势（放大时生效）
+            PanGesture.create({ fingers: 1, direction: PanDirection.All });
+            // 单指拖动手势（放大时生效）
+            PanGesture.onActionStart(() => {
+                this.lastOffsetX = this.offsetX;
+                this.lastOffsetY = this.offsetY;
+            });
+            // 单指拖动手势（放大时生效）
+            PanGesture.onActionUpdate((event: GestureEvent) => {
+                // 只有放大状态下才允许拖动
+                if (this.scaleValue > 1.0) {
+                    // 提高灵敏度：乘以灵敏度系数
+                    this.offsetX = this.lastOffsetX + event.offsetX * this.dragSensitivity;
+                    this.offsetY = this.lastOffsetY + event.offsetY * this.dragSensitivity;
+                    // 限制偏移范围
+                    this.clampOffset();
+                }
+            });
+            // 单指拖动手势（放大时生效）
+            PanGesture.onActionEnd(() => {
+                this.lastOffsetX = this.offsetX;
+                this.lastOffsetY = this.offsetY;
+            });
+            // 单指拖动手势（放大时生效）
+            PanGesture.pop();
+            GestureGroup.pop();
+            globalThis.Gesture.pop();
+        }, Image);
+        // 地图显示区域
+        Stack.pop();
+        Column.pop();
+    }
+    // 重置视图
+    private resetView() {
+        Context.animateTo({ duration: 300, curve: Curve.EaseOut }, () => {
+            this.scaleValue = 1.0;
+            this.pinchValue = 1.0;
+            this.offsetX = 0;
+            this.offsetY = 0;
+            this.lastOffsetX = 0;
+            this.lastOffsetY = 0;
+        });
+    }
+    // 缩放时调整偏移量
+    private adjustOffsetOnScale() {
+        // 简单处理：缩放时重置偏移
+        if (this.scaleValue <= 1.0) {
+            this.offsetX = 0;
+            this.offsetY = 0;
+        }
+    }
+    // 限制偏移范围
+    private clampOffset() {
+        // 计算最大允许偏移量（根据缩放比例动态计算）
+        const maxOffset = (this.scaleValue - 1) * 300;
+        this.offsetX = Math.max(-maxOffset, Math.min(maxOffset, this.offsetX));
+        this.offsetY = Math.max(-maxOffset, Math.min(maxOffset, this.offsetY));
+    }
+    rerender() {
+        this.updateDirtyElements();
+    }
 }
 registerNamedRoute(() => new MainApp(undefined, {}), "", { bundleName: "com.example.uestc_charger_monitor", moduleName: "entry", pagePath: "pages/Index", pageFullPath: "entry/src/main/ets/pages/Index", integratedHsp: "false", moduleType: "followWithHap" });

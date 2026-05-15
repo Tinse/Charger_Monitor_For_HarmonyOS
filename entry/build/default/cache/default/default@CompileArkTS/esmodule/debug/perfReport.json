@@ -1,44 +1,44 @@
 [
     {
-        "duration": 19209600,
-        "endTime": 13357798900600,
+        "duration": 23844000,
+        "endTime": 14885499833300,
         "name": "Total",
         "parentEvent": "generate merged abc by es2abc (async)",
-        "startTime": 13357779691000
+        "startTime": 14885475989300
     },
     {
-        "duration": 9283700,
-        "endTime": 13357788996400,
+        "duration": 11725800,
+        "endTime": 14885487741000,
         "name": "Compile",
         "parentEvent": "Total",
-        "startTime": 13357779712700
+        "startTime": 14885476015200
     },
     {
-        "duration": 8280700,
-        "endTime": 13357788270500,
+        "duration": 10773900,
+        "endTime": 14885487026700,
         "name": "Read input and cache (async)",
         "parentEvent": "Compile",
-        "startTime": 13357779989800
+        "startTime": 14885476252800
     },
     {
-        "duration": 1700,
-        "endTime": 13357789001100,
+        "duration": 2100,
+        "endTime": 14885487745300,
         "name": "Resolve file dep relations",
         "parentEvent": "Total",
-        "startTime": 13357788999400
+        "startTime": 14885487743200
     },
     {
-        "duration": 9898300,
-        "endTime": 13357798899700,
+        "duration": 12087000,
+        "endTime": 14885499832400,
         "name": "Emit abc",
         "parentEvent": "Total",
-        "startTime": 13357789001400
+        "startTime": 14885487745400
     },
     {
-        "duration": 9359200,
-        "endTime": 13357798584000,
+        "duration": 11480200,
+        "endTime": 14885499463100,
         "name": "Emit merged program",
         "parentEvent": "Emit abc",
-        "startTime": 13357789224800
+        "startTime": 14885487982900
     }
 ]

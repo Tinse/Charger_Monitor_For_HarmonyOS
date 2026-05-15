@@ -26,7 +26,8 @@
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\application\\UIAbilityContext.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\application\\ApplicationContext.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.app.ability.systemConfiguration.d.ts",
-        "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\application\\UIExtensionContext.d.ts"
+        "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\application\\UIExtensionContext.d.ts",
+        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\Index.ets"
       ],
       "error": false
     },
@@ -147,7 +148,8 @@
         "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\entryability\\EntryAbility.ets",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.arkui.UIContext.d.ts",
         "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\Index.ets",
-        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ChargerApi.ets"
+        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ChargerApi.ets",
+        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ThemeManager.ets"
       ],
       "error": false
     },
@@ -245,7 +247,7 @@
       "error": false
     },
     "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\entryability\\EntryAbility.ets": {
-      "mtimeMs": 1778836396825.6555,
+      "mtimeMs": 1778846358936.6077,
       "children": [
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.app.ability.AbilityConstant.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.app.ability.ConfigurationConstant.d.ts",
@@ -256,11 +258,14 @@
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.abilityAccessCtrl.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.abilityAccessCtrl.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.app.ability.common.d.ts",
+        "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.app.ability.Configuration.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.hilog.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.window.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.base.d.ts"
       ],
-      "parent": [],
+      "parent": [
+        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\Index.ets"
+      ],
       "error": false
     },
     "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.app.ability.appManager.d.ts": {
@@ -517,7 +522,8 @@
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\application\\UIAbilityContext.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.app.ability.EnvironmentCallback.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\application\\ExtensionContext.d.ts",
-        "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\application\\AbilityStageContext.d.ts"
+        "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\application\\AbilityStageContext.d.ts",
+        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\entryability\\EntryAbility.ets"
       ],
       "error": false
     },
@@ -1600,7 +1606,7 @@
       "error": false
     },
     "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ChargerApi.ets": {
-      "mtimeMs": 1778836396840.6538,
+      "mtimeMs": 1778841620255.2048,
       "children": [
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.net.http.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.geoLocationManager.d.ts",
@@ -1616,7 +1622,7 @@
       "error": false
     },
     "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ChargerModels.ets": {
-      "mtimeMs": 1778836396837.669,
+      "mtimeMs": 1778841620610.3635,
       "children": [],
       "parent": [
         "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\Index.ets",
@@ -1626,7 +1632,7 @@
       "error": false
     },
     "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ConfigManager.ets": {
-      "mtimeMs": 1778836396834.6567,
+      "mtimeMs": 1778841522861.5632,
       "children": [
         "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ChargerModels.ets",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.data.preferences.d.ts"
@@ -1665,16 +1671,19 @@
       "error": false
     },
     "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\Index.ets": {
-      "mtimeMs": 1778836396842.656,
+      "mtimeMs": 1778846128151.9329,
       "children": [
         "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ChargerApi.ets",
         "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ChargerModels.ets",
         "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ConfigManager.ets",
+        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ThemeManager.ets",
+        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\entryability\\EntryAbility.ets",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.app.ability.common.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.promptAction.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.display.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.geoLocationManager.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.app.ability.Want.d.ts",
+        "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.app.ability.ConfigurationConstant.d.ts",
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.base.d.ts"
       ],
       "parent": [],
@@ -1938,7 +1947,8 @@
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\application\\BaseContext.d.ts"
       ],
       "parent": [
-        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ConfigManager.ets"
+        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ConfigManager.ets",
+        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ThemeManager.ets"
       ],
       "error": false
     },
@@ -2406,6 +2416,17 @@
       "children": [],
       "parent": [
         "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.web.webview.d.ts"
+      ],
+      "error": false
+    },
+    "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\ThemeManager.ets": {
+      "mtimeMs": 1778847301255.963,
+      "children": [
+        "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.data.preferences.d.ts",
+        "C:\\Program Files\\Huawei\\DevEco Studio\\sdk\\default\\openharmony\\ets\\api\\@ohos.app.ability.common.d.ts"
+      ],
+      "parent": [
+        "E:\\code\\UESTC_Charger_Monitor\\entry\\src\\main\\ets\\pages\\Index.ets"
       ],
       "error": false
     }

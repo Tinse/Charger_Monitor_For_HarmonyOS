@@ -1,6 +1,16 @@
 if (!("finalizeConstruction" in ViewPU.prototype)) {
     Reflect.set(ViewPU.prototype, "finalizeConstruction", () => { });
 }
+interface MapViewerUI_Params {
+    scaleValue?: number;
+    pinchValue?: number;
+    offsetX?: number;
+    offsetY?: number;
+    lastOffsetX?: number;
+    lastOffsetY?: number;
+    minScale?: number;
+    maxScale?: number;
+}
 interface StationPickerUI_Params {
     stationConfig?: Record<string, number>;
     // 保存配置的回调函数
@@ -516,6 +526,28 @@ class MainApp extends ViewPU {
             TabContent.debugLine("entry/src/main/ets/pages/Index.ets(242:9)", "entry");
         }, TabContent);
         TabContent.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            TabContent.create(() => {
+                {
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        if (isInitialRender) {
+                            let componentCall = new MapViewerUI(this, {}, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 252, col: 11 });
+                            ViewPU.create(componentCall);
+                            let paramsLambda = () => {
+                                return {};
+                            };
+                            componentCall.paramsGenerator_ = paramsLambda;
+                        }
+                        else {
+                            this.updateStateVarsOfChildByElmtId(elmtId, {});
+                        }
+                    }, { name: "MapViewerUI" });
+                }
+            });
+            TabContent.tabBar("地图");
+            TabContent.debugLine("entry/src/main/ets/pages/Index.ets(251:9)", "entry");
+        }, TabContent);
+        TabContent.pop();
         Tabs.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             If.create();
@@ -524,7 +556,7 @@ class MainApp extends ViewPU {
                 this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Column.create();
-                        Column.debugLine("entry/src/main/ets/pages/Index.ets(255:9)", "entry");
+                        Column.debugLine("entry/src/main/ets/pages/Index.ets(259:9)", "entry");
                         Column.width(300);
                         Column.padding(20);
                         Column.backgroundColor('#1c1c1e');
@@ -535,7 +567,7 @@ class MainApp extends ViewPU {
                     }, Column);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create("配置名称");
-                        Text.debugLine("entry/src/main/ets/pages/Index.ets(256:11)", "entry");
+                        Text.debugLine("entry/src/main/ets/pages/Index.ets(260:11)", "entry");
                         Text.fontColor(Color.White);
                         Text.fontSize(16);
                         Text.fontWeight(FontWeight.Bold);
@@ -543,7 +575,7 @@ class MainApp extends ViewPU {
                     Text.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         TextInput.create({ placeholder: '输入配置名称', text: this.configDialogText });
-                        TextInput.debugLine("entry/src/main/ets/pages/Index.ets(257:11)", "entry");
+                        TextInput.debugLine("entry/src/main/ets/pages/Index.ets(261:11)", "entry");
                         TextInput.onChange((value) => { this.configDialogText = value; });
                         TextInput.width('100%');
                         TextInput.height(40);
@@ -553,12 +585,12 @@ class MainApp extends ViewPU {
                     }, TextInput);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Row.create();
-                        Row.debugLine("entry/src/main/ets/pages/Index.ets(265:11)", "entry");
+                        Row.debugLine("entry/src/main/ets/pages/Index.ets(269:11)", "entry");
                         Row.width('100%');
                     }, Row);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Button.createWithLabel("取消");
-                        Button.debugLine("entry/src/main/ets/pages/Index.ets(266:13)", "entry");
+                        Button.debugLine("entry/src/main/ets/pages/Index.ets(270:13)", "entry");
                         Button.onClick(() => {
                             this.showConfigDialog = false;
                             this.configDialogText = "";
@@ -571,7 +603,7 @@ class MainApp extends ViewPU {
                     Button.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Button.createWithLabel("保存");
-                        Button.debugLine("entry/src/main/ets/pages/Index.ets(276:13)", "entry");
+                        Button.debugLine("entry/src/main/ets/pages/Index.ets(280:13)", "entry");
                         Button.onClick(async () => {
                             try {
                                 await this.saveCurrentConfig(this.configDialogText);
@@ -1059,7 +1091,7 @@ class ChargerMonitorUI extends ViewPU {
     buildSortMenuItem(text: string, mode: number, parent = null) {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Text.create(text);
-            Text.debugLine("entry/src/main/ets/pages/Index.ets(604:5)", "entry");
+            Text.debugLine("entry/src/main/ets/pages/Index.ets(608:5)", "entry");
             Text.fontSize(10);
             Text.fontColor(this.sortMode === mode ? '#0a84ff' : Color.White);
             Text.backgroundColor(this.sortMode === mode ? '#1c1c1e' : 'transparent');
@@ -1077,14 +1109,14 @@ class ChargerMonitorUI extends ViewPU {
     initialRender() {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create();
-            Column.debugLine("entry/src/main/ets/pages/Index.ets(619:5)", "entry");
+            Column.debugLine("entry/src/main/ets/pages/Index.ets(623:5)", "entry");
             Column.width('100%');
             Column.height('100%');
             Column.backgroundColor('#000000');
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create();
-            Column.debugLine("entry/src/main/ets/pages/Index.ets(622:7)", "entry");
+            Column.debugLine("entry/src/main/ets/pages/Index.ets(626:7)", "entry");
             Column.width('100%');
             Column.backgroundColor('#000000');
             Column.borderRadius(12);
@@ -1093,7 +1125,7 @@ class ChargerMonitorUI extends ViewPU {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             // 头部胶囊
             Row.create();
-            Row.debugLine("entry/src/main/ets/pages/Index.ets(624:9)", "entry");
+            Row.debugLine("entry/src/main/ets/pages/Index.ets(628:9)", "entry");
             // 头部胶囊
             Row.width('100%');
             // 头部胶囊
@@ -1109,7 +1141,7 @@ class ChargerMonitorUI extends ViewPU {
                 this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create("正在获取数据…");
-                        Text.debugLine("entry/src/main/ets/pages/Index.ets(626:13)", "entry");
+                        Text.debugLine("entry/src/main/ets/pages/Index.ets(630:13)", "entry");
                         Text.fontColor('#b4b4b4');
                         Text.fontSize(14);
                     }, Text);
@@ -1120,13 +1152,13 @@ class ChargerMonitorUI extends ViewPU {
                 this.ifElseBranchUpdateFunction(1, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Circle.create({ width: 12, height: 12 });
-                        Circle.debugLine("entry/src/main/ets/pages/Index.ets(628:13)", "entry");
+                        Circle.debugLine("entry/src/main/ets/pages/Index.ets(632:13)", "entry");
                         Circle.fill(this.getStats().anyFree ? '#30d158' : '#ff453a');
                         Circle.margin({ right: 10 });
                     }, Circle);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create(this.getStats().anyFree ? "有空闲插座" : "全部占用");
-                        Text.debugLine("entry/src/main/ets/pages/Index.ets(629:13)", "entry");
+                        Text.debugLine("entry/src/main/ets/pages/Index.ets(633:13)", "entry");
                         Text.fontColor(Color.White);
                         Text.fontSize(16);
                         Text.fontWeight(FontWeight.Medium);
@@ -1134,12 +1166,12 @@ class ChargerMonitorUI extends ViewPU {
                     Text.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Blank.create();
-                        Blank.debugLine("entry/src/main/ets/pages/Index.ets(630:13)", "entry");
+                        Blank.debugLine("entry/src/main/ets/pages/Index.ets(634:13)", "entry");
                     }, Blank);
                     Blank.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create(`${this.getStats().free}/${this.getStats().total}`);
-                        Text.debugLine("entry/src/main/ets/pages/Index.ets(631:13)", "entry");
+                        Text.debugLine("entry/src/main/ets/pages/Index.ets(635:13)", "entry");
                         Text.fontColor(this.getStats().anyFree ? '#30d158' : '#ff453a');
                         Text.fontSize(16);
                         Text.fontWeight(FontWeight.Bold);
@@ -1152,7 +1184,7 @@ class ChargerMonitorUI extends ViewPU {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             // 刷新按钮
             Button.createWithLabel(this.canRefresh ? "刷新" : `冷却中(${Math.ceil(this.refreshCooldown / 1000)}s)`);
-            Button.debugLine("entry/src/main/ets/pages/Index.ets(635:11)", "entry");
+            Button.debugLine("entry/src/main/ets/pages/Index.ets(639:11)", "entry");
             // 刷新按钮
             Button.onClick(async () => {
                 try {
@@ -1194,7 +1226,7 @@ class ChargerMonitorUI extends ViewPU {
                 this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Column.create();
-                        Column.debugLine("entry/src/main/ets/pages/Index.ets(663:11)", "entry");
+                        Column.debugLine("entry/src/main/ets/pages/Index.ets(667:11)", "entry");
                         Column.width('100%');
                         Column.backgroundColor('#000000');
                         Column.padding({ left: 10, right: 10 });
@@ -1202,7 +1234,7 @@ class ChargerMonitorUI extends ViewPU {
                     }, Column);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         TextInput.create({ placeholder: '搜索站点名称…', text: this.searchText });
-                        TextInput.debugLine("entry/src/main/ets/pages/Index.ets(664:13)", "entry");
+                        TextInput.debugLine("entry/src/main/ets/pages/Index.ets(668:13)", "entry");
                         TextInput.onChange((value) => { this.searchText = value; });
                         TextInput.height(36);
                         TextInput.backgroundColor('rgba(0,0,0,0.5)');
@@ -1212,7 +1244,7 @@ class ChargerMonitorUI extends ViewPU {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         // 排序模式选择器 - 使用简化按钮组（节省空间）
                         Row.create();
-                        Row.debugLine("entry/src/main/ets/pages/Index.ets(672:13)", "entry");
+                        Row.debugLine("entry/src/main/ets/pages/Index.ets(676:13)", "entry");
                         // 排序模式选择器 - 使用简化按钮组（节省空间）
                         Row.width('100%');
                         // 排序模式选择器 - 使用简化按钮组（节省空间）
@@ -1222,7 +1254,7 @@ class ChargerMonitorUI extends ViewPU {
                     }, Row);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create("排序:");
-                        Text.debugLine("entry/src/main/ets/pages/Index.ets(673:15)", "entry");
+                        Text.debugLine("entry/src/main/ets/pages/Index.ets(677:15)", "entry");
                         Text.fontColor('#8e8e93');
                         Text.fontSize(12);
                         Text.margin({ right: 10 });
@@ -1230,7 +1262,7 @@ class ChargerMonitorUI extends ViewPU {
                     Text.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Button.createWithLabel(this.getSortModeText(this.sortMode));
-                        Button.debugLine("entry/src/main/ets/pages/Index.ets(674:15)", "entry");
+                        Button.debugLine("entry/src/main/ets/pages/Index.ets(678:15)", "entry");
                         Button.onClick(() => {
                             this.showSortMenu = !this.showSortMenu;
                         });
@@ -1251,7 +1283,7 @@ class ChargerMonitorUI extends ViewPU {
                             this.ifElseBranchUpdateFunction(0, () => {
                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                     Column.create();
-                                    Column.debugLine("entry/src/main/ets/pages/Index.ets(691:15)", "entry");
+                                    Column.debugLine("entry/src/main/ets/pages/Index.ets(695:15)", "entry");
                                     Column.backgroundColor('#2c2c2e');
                                     Column.borderRadius(4);
                                     Column.width(100);
@@ -1273,7 +1305,7 @@ class ChargerMonitorUI extends ViewPU {
                     If.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         List.create({ space: 10 });
-                        List.debugLine("entry/src/main/ets/pages/Index.ets(704:13)", "entry");
+                        List.debugLine("entry/src/main/ets/pages/Index.ets(708:13)", "entry");
                         List.height(this.getExpandedHeight() - 160);
                         List.backgroundColor('#000000');
                         List.padding({ left: 10, right: 10 });
@@ -1293,27 +1325,27 @@ class ChargerMonitorUI extends ViewPU {
                                 };
                                 const itemCreation2 = (elmtId, isInitialRender) => {
                                     ListItem.create(deepRenderFunction, true);
-                                    ListItem.debugLine("entry/src/main/ets/pages/Index.ets(706:17)", "entry");
+                                    ListItem.debugLine("entry/src/main/ets/pages/Index.ets(710:17)", "entry");
                                 };
                                 const deepRenderFunction = (elmtId, isInitialRender) => {
                                     itemCreation(elmtId, isInitialRender);
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Column.create();
-                                        Column.debugLine("entry/src/main/ets/pages/Index.ets(707:19)", "entry");
+                                        Column.debugLine("entry/src/main/ets/pages/Index.ets(711:19)", "entry");
                                         Column.backgroundColor('#1c1c1e');
                                         Column.borderRadius(8);
                                         Column.padding(0);
                                     }, Column);
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Row.create();
-                                        Row.debugLine("entry/src/main/ets/pages/Index.ets(708:21)", "entry");
+                                        Row.debugLine("entry/src/main/ets/pages/Index.ets(712:21)", "entry");
                                         Row.width('100%');
                                         Row.padding(12);
                                         Row.border({ width: { bottom: 1 }, color: 'rgba(255,255,255,0.05)' });
                                     }, Row);
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Text.create(item.station.name);
-                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(709:23)", "entry");
+                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(713:23)", "entry");
                                         Text.fontColor(Color.White);
                                         Text.fontSize(14);
                                         Text.fontWeight(FontWeight.Bold);
@@ -1321,12 +1353,12 @@ class ChargerMonitorUI extends ViewPU {
                                     Text.pop();
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Blank.create();
-                                        Blank.debugLine("entry/src/main/ets/pages/Index.ets(710:23)", "entry");
+                                        Blank.debugLine("entry/src/main/ets/pages/Index.ets(714:23)", "entry");
                                     }, Blank);
                                     Blank.pop();
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Text.create(` ${item.freeCount}/${item.station.outlets.length} `);
-                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(711:23)", "entry");
+                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(715:23)", "entry");
                                         Text.fontColor(item.freeCount > 0 ? '#30d158' : '#ff453a');
                                         Text.backgroundColor(item.freeCount > 0 ? 'rgba(48,209,88,0.15)' : 'rgba(255,69,58,0.15)');
                                         Text.borderRadius(10);
@@ -1337,7 +1369,7 @@ class ChargerMonitorUI extends ViewPU {
                                     Row.pop();
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Column.create({ space: 6 });
-                                        Column.debugLine("entry/src/main/ets/pages/Index.ets(718:21)", "entry");
+                                        Column.debugLine("entry/src/main/ets/pages/Index.ets(722:21)", "entry");
                                     }, Column);
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         ForEach.create();
@@ -1345,27 +1377,27 @@ class ChargerMonitorUI extends ViewPU {
                                             const outlet = _item;
                                             this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                 Row.create();
-                                                Row.debugLine("entry/src/main/ets/pages/Index.ets(720:25)", "entry");
+                                                Row.debugLine("entry/src/main/ets/pages/Index.ets(724:25)", "entry");
                                                 Row.width('100%');
                                                 Row.padding({ left: 12, right: 12, top: 6, bottom: 6 });
                                             }, Row);
                                             this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                 Rect.create({ width: 3, height: 20 });
-                                                Rect.debugLine("entry/src/main/ets/pages/Index.ets(721:27)", "entry");
+                                                Rect.debugLine("entry/src/main/ets/pages/Index.ets(725:27)", "entry");
                                                 Rect.fill(outlet.status === 1 ? '#30d158' : (outlet.status === 2 ? '#ff453a' : '#ffd60a'));
                                                 Rect.radius(1.5);
                                                 Rect.margin({ right: 10 });
                                             }, Rect);
                                             this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                 Text.create(`插座${outlet.serial}`);
-                                                Text.debugLine("entry/src/main/ets/pages/Index.ets(722:27)", "entry");
+                                                Text.debugLine("entry/src/main/ets/pages/Index.ets(726:27)", "entry");
                                                 Text.fontColor(Color.White);
                                                 Text.fontSize(13);
                                             }, Text);
                                             Text.pop();
                                             this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                 Blank.create();
-                                                Blank.debugLine("entry/src/main/ets/pages/Index.ets(723:27)", "entry");
+                                                Blank.debugLine("entry/src/main/ets/pages/Index.ets(727:27)", "entry");
                                             }, Blank);
                                             Blank.pop();
                                             this.observeComponentCreation2((elmtId, isInitialRender) => {
@@ -1378,7 +1410,7 @@ class ChargerMonitorUI extends ViewPU {
                                                                 this.ifElseBranchUpdateFunction(0, () => {
                                                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                                         Text.create(`${outlet.power_w}W`);
-                                                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(725:63)", "entry");
+                                                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(729:63)", "entry");
                                                                         __Text__chipStyle('#0a84ff');
                                                                     }, Text);
                                                                     Text.pop();
@@ -1396,7 +1428,7 @@ class ChargerMonitorUI extends ViewPU {
                                                                 this.ifElseBranchUpdateFunction(0, () => {
                                                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                                         Text.create(`¥${outlet.fee.toFixed(2)}`);
-                                                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(726:59)", "entry");
+                                                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(730:59)", "entry");
                                                                         __Text__chipStyle('#30d158');
                                                                     }, Text);
                                                                     Text.pop();
@@ -1414,7 +1446,7 @@ class ChargerMonitorUI extends ViewPU {
                                                                 this.ifElseBranchUpdateFunction(0, () => {
                                                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                                         Text.create(`${outlet.used_min}分钟`);
-                                                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(727:64)", "entry");
+                                                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(731:64)", "entry");
                                                                         __Text__chipStyle('#ffd60a');
                                                                     }, Text);
                                                                     Text.pop();
@@ -1432,7 +1464,7 @@ class ChargerMonitorUI extends ViewPU {
                                                     this.ifElseBranchUpdateFunction(1, () => {
                                                         this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                             Text.create(outlet.status === 1 ? '空闲' : '故障');
-                                                            Text.debugLine("entry/src/main/ets/pages/Index.ets(729:29)", "entry");
+                                                            Text.debugLine("entry/src/main/ets/pages/Index.ets(733:29)", "entry");
                                                             __Text__chipStyle(outlet.status === 1 ? '#30d158' : '#ff453a');
                                                         }, Text);
                                                         Text.pop();
@@ -1740,7 +1772,7 @@ class StationPickerUI extends ViewPU {
     initialRender() {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create();
-            Column.debugLine("entry/src/main/ets/pages/Index.ets(940:5)", "entry");
+            Column.debugLine("entry/src/main/ets/pages/Index.ets(944:5)", "entry");
             Column.width('100%');
             Column.height('100%');
             Column.backgroundColor('#000000');
@@ -1748,7 +1780,7 @@ class StationPickerUI extends ViewPU {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             // 搜索框
             TextInput.create({ placeholder: '搜索站点名称…', text: this.searchText });
-            TextInput.debugLine("entry/src/main/ets/pages/Index.ets(942:7)", "entry");
+            TextInput.debugLine("entry/src/main/ets/pages/Index.ets(946:7)", "entry");
             // 搜索框
             TextInput.onChange((value) => { this.searchText = value; });
             // 搜索框
@@ -1771,7 +1803,7 @@ class StationPickerUI extends ViewPU {
                 this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create(this.locationStatus);
-                        Text.debugLine("entry/src/main/ets/pages/Index.ets(953:9)", "entry");
+                        Text.debugLine("entry/src/main/ets/pages/Index.ets(957:9)", "entry");
                         Text.fontColor('#8e8e93');
                         Text.fontSize(12);
                         Text.width('90%');
@@ -1794,18 +1826,18 @@ class StationPickerUI extends ViewPU {
                 this.ifElseBranchUpdateFunction(0, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Row.create();
-                        Row.debugLine("entry/src/main/ets/pages/Index.ets(962:9)", "entry");
+                        Row.debugLine("entry/src/main/ets/pages/Index.ets(966:9)", "entry");
                         Row.width('100%');
                         Row.justifyContent(FlexAlign.Center);
                         Row.padding(20);
                     }, Row);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         LoadingProgress.create();
-                        LoadingProgress.debugLine("entry/src/main/ets/pages/Index.ets(963:11)", "entry");
+                        LoadingProgress.debugLine("entry/src/main/ets/pages/Index.ets(967:11)", "entry");
                     }, LoadingProgress);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create(this.loadingMessage);
-                        Text.debugLine("entry/src/main/ets/pages/Index.ets(964:11)", "entry");
+                        Text.debugLine("entry/src/main/ets/pages/Index.ets(968:11)", "entry");
                         Text.fontColor(Color.White);
                         Text.fontSize(14);
                         Text.margin({ left: 10 });
@@ -1819,7 +1851,7 @@ class StationPickerUI extends ViewPU {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         // 空状态提示
                         Column.create({ space: 16 });
-                        Column.debugLine("entry/src/main/ets/pages/Index.ets(971:9)", "entry");
+                        Column.debugLine("entry/src/main/ets/pages/Index.ets(975:9)", "entry");
                         // 空状态提示
                         Column.width('100%');
                         // 空状态提示
@@ -1829,13 +1861,13 @@ class StationPickerUI extends ViewPU {
                     }, Column);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create('📭');
-                        Text.debugLine("entry/src/main/ets/pages/Index.ets(972:11)", "entry");
+                        Text.debugLine("entry/src/main/ets/pages/Index.ets(976:11)", "entry");
                         Text.fontSize(48);
                     }, Text);
                     Text.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create('未找到附近充电站');
-                        Text.debugLine("entry/src/main/ets/pages/Index.ets(974:11)", "entry");
+                        Text.debugLine("entry/src/main/ets/pages/Index.ets(978:11)", "entry");
                         Text.fontColor(Color.White);
                         Text.fontSize(16);
                     }, Text);
@@ -1846,7 +1878,7 @@ class StationPickerUI extends ViewPU {
                             this.ifElseBranchUpdateFunction(0, () => {
                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                     Text.create('请确保设备定位服务已开启');
-                                    Text.debugLine("entry/src/main/ets/pages/Index.ets(978:13)", "entry");
+                                    Text.debugLine("entry/src/main/ets/pages/Index.ets(982:13)", "entry");
                                     Text.fontColor('#8e8e93');
                                     Text.fontSize(14);
                                 }, Text);
@@ -1865,7 +1897,7 @@ class StationPickerUI extends ViewPU {
                             this.ifElseBranchUpdateFunction(0, () => {
                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                     Text.create('请检查网络连接');
-                                    Text.debugLine("entry/src/main/ets/pages/Index.ets(983:13)", "entry");
+                                    Text.debugLine("entry/src/main/ets/pages/Index.ets(987:13)", "entry");
                                     Text.fontColor('#8e8e93');
                                     Text.fontSize(14);
                                 }, Text);
@@ -1882,7 +1914,7 @@ class StationPickerUI extends ViewPU {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         // 刷新按钮
                         Button.createWithLabel('刷新');
-                        Button.debugLine("entry/src/main/ets/pages/Index.ets(988:11)", "entry");
+                        Button.debugLine("entry/src/main/ets/pages/Index.ets(992:11)", "entry");
                         // 刷新按钮
                         Button.backgroundColor('#30d158');
                         // 刷新按钮
@@ -1909,7 +1941,7 @@ class StationPickerUI extends ViewPU {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         // 站点列表
                         List.create({ space: 8 });
-                        List.debugLine("entry/src/main/ets/pages/Index.ets(1003:9)", "entry");
+                        List.debugLine("entry/src/main/ets/pages/Index.ets(1007:9)", "entry");
                         // 站点列表
                         List.layoutWeight(1);
                         // 站点列表
@@ -1930,13 +1962,13 @@ class StationPickerUI extends ViewPU {
                                 };
                                 const itemCreation2 = (elmtId, isInitialRender) => {
                                     ListItem.create(deepRenderFunction, true);
-                                    ListItem.debugLine("entry/src/main/ets/pages/Index.ets(1005:13)", "entry");
+                                    ListItem.debugLine("entry/src/main/ets/pages/Index.ets(1009:13)", "entry");
                                 };
                                 const deepRenderFunction = (elmtId, isInitialRender) => {
                                     itemCreation(elmtId, isInitialRender);
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Row.create();
-                                        Row.debugLine("entry/src/main/ets/pages/Index.ets(1006:15)", "entry");
+                                        Row.debugLine("entry/src/main/ets/pages/Index.ets(1010:15)", "entry");
                                         Row.width('100%');
                                         Row.padding(16);
                                         Row.backgroundColor('#1c1c1e');
@@ -1948,7 +1980,7 @@ class StationPickerUI extends ViewPU {
                                             name: station.stationName,
                                             group: 'stations'
                                         });
-                                        Checkbox.debugLine("entry/src/main/ets/pages/Index.ets(1008:17)", "entry");
+                                        Checkbox.debugLine("entry/src/main/ets/pages/Index.ets(1012:17)", "entry");
                                         // 选择框
                                         Checkbox.select(this.selectedIds.includes(station.stationId));
                                         // 选择框
@@ -1965,13 +1997,13 @@ class StationPickerUI extends ViewPU {
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         // 站点信息
                                         Column.create({ space: 2 });
-                                        Column.debugLine("entry/src/main/ets/pages/Index.ets(1020:17)", "entry");
+                                        Column.debugLine("entry/src/main/ets/pages/Index.ets(1024:17)", "entry");
                                         // 站点信息
                                         Column.layoutWeight(1);
                                     }, Column);
                                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                                         Text.create(station.stationName);
-                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(1021:19)", "entry");
+                                        Text.debugLine("entry/src/main/ets/pages/Index.ets(1025:19)", "entry");
                                         Text.fontColor(Color.White);
                                         Text.fontSize(16);
                                         Text.fontWeight(FontWeight.Medium);
@@ -1983,7 +2015,7 @@ class StationPickerUI extends ViewPU {
                                             this.ifElseBranchUpdateFunction(0, () => {
                                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                     Text.create(station.address);
-                                                    Text.debugLine("entry/src/main/ets/pages/Index.ets(1027:21)", "entry");
+                                                    Text.debugLine("entry/src/main/ets/pages/Index.ets(1031:21)", "entry");
                                                     Text.fontColor('#8e8e93');
                                                     Text.fontSize(12);
                                                 }, Text);
@@ -2004,7 +2036,7 @@ class StationPickerUI extends ViewPU {
                                             this.ifElseBranchUpdateFunction(0, () => {
                                                 this.observeComponentCreation2((elmtId, isInitialRender) => {
                                                     Text.create(`距离: ${station.formattedDistance}`);
-                                                    Text.debugLine("entry/src/main/ets/pages/Index.ets(1034:21)", "entry");
+                                                    Text.debugLine("entry/src/main/ets/pages/Index.ets(1038:21)", "entry");
                                                     Text.fontColor('#30d158');
                                                     Text.fontSize(11);
                                                 }, Text);
@@ -2038,7 +2070,7 @@ class StationPickerUI extends ViewPU {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             // 保存按钮
             Button.createWithLabel(`保存选中站点 (${this.selectedIds.length})`);
-            Button.debugLine("entry/src/main/ets/pages/Index.ets(1053:7)", "entry");
+            Button.debugLine("entry/src/main/ets/pages/Index.ets(1057:7)", "entry");
             // 保存按钮
             Button.width('90%');
             // 保存按钮
@@ -2081,5 +2113,268 @@ function __Text__chipStyle(bgColor: string): void {
     Text.padding({ left: 6, right: 6, top: 2, bottom: 2 });
     Text.borderRadius(8);
     Text.margin({ right: 5 });
+}
+class MapViewerUI extends ViewPU {
+    constructor(parent, params, __localStorage, elmtId = -1, paramsLambda = undefined, extraInfo) {
+        super(parent, __localStorage, elmtId, extraInfo);
+        if (typeof paramsLambda === "function") {
+            this.paramsGenerator_ = paramsLambda;
+        }
+        this.__scaleValue = new ObservedPropertySimplePU(1.0, this, "scaleValue");
+        this.__pinchValue = new ObservedPropertySimplePU(1.0, this, "pinchValue");
+        this.__offsetX = new ObservedPropertySimplePU(0, this, "offsetX");
+        this.__offsetY = new ObservedPropertySimplePU(0, this, "offsetY");
+        this.__lastOffsetX = new ObservedPropertySimplePU(0, this, "lastOffsetX");
+        this.__lastOffsetY = new ObservedPropertySimplePU(0, this, "lastOffsetY");
+        this.minScale = 0.5;
+        this.maxScale = 5.0;
+        this.setInitiallyProvidedValue(params);
+        this.finalizeConstruction();
+    }
+    setInitiallyProvidedValue(params: MapViewerUI_Params) {
+        if (params.scaleValue !== undefined) {
+            this.scaleValue = params.scaleValue;
+        }
+        if (params.pinchValue !== undefined) {
+            this.pinchValue = params.pinchValue;
+        }
+        if (params.offsetX !== undefined) {
+            this.offsetX = params.offsetX;
+        }
+        if (params.offsetY !== undefined) {
+            this.offsetY = params.offsetY;
+        }
+        if (params.lastOffsetX !== undefined) {
+            this.lastOffsetX = params.lastOffsetX;
+        }
+        if (params.lastOffsetY !== undefined) {
+            this.lastOffsetY = params.lastOffsetY;
+        }
+        if (params.minScale !== undefined) {
+            this.minScale = params.minScale;
+        }
+        if (params.maxScale !== undefined) {
+            this.maxScale = params.maxScale;
+        }
+    }
+    updateStateVars(params: MapViewerUI_Params) {
+    }
+    purgeVariableDependenciesOnElmtId(rmElmtId) {
+        this.__scaleValue.purgeDependencyOnElmtId(rmElmtId);
+        this.__pinchValue.purgeDependencyOnElmtId(rmElmtId);
+        this.__offsetX.purgeDependencyOnElmtId(rmElmtId);
+        this.__offsetY.purgeDependencyOnElmtId(rmElmtId);
+        this.__lastOffsetX.purgeDependencyOnElmtId(rmElmtId);
+        this.__lastOffsetY.purgeDependencyOnElmtId(rmElmtId);
+    }
+    aboutToBeDeleted() {
+        this.__scaleValue.aboutToBeDeleted();
+        this.__pinchValue.aboutToBeDeleted();
+        this.__offsetX.aboutToBeDeleted();
+        this.__offsetY.aboutToBeDeleted();
+        this.__lastOffsetX.aboutToBeDeleted();
+        this.__lastOffsetY.aboutToBeDeleted();
+        SubscriberManager.Get().delete(this.id__());
+        this.aboutToBeDeletedInternal();
+    }
+    // 缩放比例
+    private __scaleValue: ObservedPropertySimplePU<number>;
+    get scaleValue() {
+        return this.__scaleValue.get();
+    }
+    set scaleValue(newValue: number) {
+        this.__scaleValue.set(newValue);
+    }
+    // 上次缩放值（用于双指缩放计算）
+    private __pinchValue: ObservedPropertySimplePU<number>;
+    get pinchValue() {
+        return this.__pinchValue.get();
+    }
+    set pinchValue(newValue: number) {
+        this.__pinchValue.set(newValue);
+    }
+    // X轴偏移
+    private __offsetX: ObservedPropertySimplePU<number>;
+    get offsetX() {
+        return this.__offsetX.get();
+    }
+    set offsetX(newValue: number) {
+        this.__offsetX.set(newValue);
+    }
+    // Y轴偏移
+    private __offsetY: ObservedPropertySimplePU<number>;
+    get offsetY() {
+        return this.__offsetY.get();
+    }
+    set offsetY(newValue: number) {
+        this.__offsetY.set(newValue);
+    }
+    // 上次X偏移（用于单指移动计算）
+    private __lastOffsetX: ObservedPropertySimplePU<number>;
+    get lastOffsetX() {
+        return this.__lastOffsetX.get();
+    }
+    set lastOffsetX(newValue: number) {
+        this.__lastOffsetX.set(newValue);
+    }
+    // 上次Y偏移（用于单指移动计算）
+    private __lastOffsetY: ObservedPropertySimplePU<number>;
+    get lastOffsetY() {
+        return this.__lastOffsetY.get();
+    }
+    set lastOffsetY(newValue: number) {
+        this.__lastOffsetY.set(newValue);
+    }
+    // 最小缩放比例
+    private minScale: number;
+    // 最大缩放比例
+    private maxScale: number;
+    initialRender() {
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Column.create();
+            Column.debugLine("entry/src/main/ets/pages/Index.ets(1120:5)", "entry");
+            Column.width('100%');
+            Column.height('100%');
+            Column.backgroundColor('#1a1a1c');
+        }, Column);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            // 提示信息
+            Row.create();
+            Row.debugLine("entry/src/main/ets/pages/Index.ets(1122:7)", "entry");
+            // 提示信息
+            Row.width('95%');
+            // 提示信息
+            Row.padding({ top: 10, bottom: 10 });
+        }, Row);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Text.create("双指缩放 | 单指拖动");
+            Text.debugLine("entry/src/main/ets/pages/Index.ets(1123:9)", "entry");
+            Text.fontColor('#888888');
+            Text.fontSize(12);
+        }, Text);
+        Text.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Blank.create();
+            Blank.debugLine("entry/src/main/ets/pages/Index.ets(1126:9)", "entry");
+        }, Blank);
+        Blank.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Text.create(`缩放: ${(this.scaleValue * 100).toFixed(0)}%`);
+            Text.debugLine("entry/src/main/ets/pages/Index.ets(1127:9)", "entry");
+            Text.fontColor('#888888');
+            Text.fontSize(12);
+        }, Text);
+        Text.pop();
+        // 提示信息
+        Row.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            // 地图显示区域
+            Stack.create();
+            Stack.debugLine("entry/src/main/ets/pages/Index.ets(1135:7)", "entry");
+            // 地图显示区域
+            Stack.width('100%');
+            // 地图显示区域
+            Stack.layoutWeight(1);
+            // 地图显示区域
+            Stack.clip(true);
+        }, Stack);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Image.create({ "id": 16777229, "type": 20000, params: [], "bundleName": "com.example.uestc_charger_monitor", "moduleName": "entry" });
+            Image.debugLine("entry/src/main/ets/pages/Index.ets(1136:9)", "entry");
+            Image.width('100%');
+            Image.height('100%');
+            Image.objectFit(ImageFit.Contain);
+            Image.scale({ x: this.scaleValue, y: this.scaleValue });
+            Image.translate({ x: this.offsetX, y: this.offsetY });
+            globalThis.Gesture.create(GesturePriority.Low);
+            GestureGroup.create(GestureMode.Parallel);
+            // 双指缩放手势
+            PinchGesture.create({ fingers: 2 });
+            // 双指缩放手势
+            PinchGesture.onActionStart(() => {
+                this.pinchValue = this.scaleValue;
+            });
+            // 双指缩放手势
+            PinchGesture.onActionUpdate((event: GestureEvent) => {
+                let newScale = this.pinchValue * event.scale;
+                // 限制缩放范围
+                newScale = Math.max(this.minScale, Math.min(this.maxScale, newScale));
+                this.scaleValue = newScale;
+                // 缩放时调整偏移量，保持缩放中心
+                this.adjustOffsetOnScale();
+            });
+            // 双指缩放手势
+            PinchGesture.onActionEnd(() => {
+                this.pinchValue = this.scaleValue;
+            });
+            // 双指缩放手势
+            PinchGesture.pop();
+            // 单指拖动手势
+            PanGesture.create({ fingers: 1 });
+            // 单指拖动手势
+            PanGesture.onActionStart(() => {
+                this.lastOffsetX = this.offsetX;
+                this.lastOffsetY = this.offsetY;
+            });
+            // 单指拖动手势
+            PanGesture.onActionUpdate((event: GestureEvent) => {
+                // 只有放大状态下才允许拖动
+                if (this.scaleValue > 1.0) {
+                    this.offsetX = this.lastOffsetX + event.offsetX;
+                    this.offsetY = this.lastOffsetY + event.offsetY;
+                    // 限制偏移范围
+                    this.clampOffset();
+                }
+            });
+            // 单指拖动手势
+            PanGesture.onActionEnd(() => {
+                this.lastOffsetX = this.offsetX;
+                this.lastOffsetY = this.offsetY;
+            });
+            // 单指拖动手势
+            PanGesture.pop();
+            GestureGroup.pop();
+            globalThis.Gesture.pop();
+            globalThis.Gesture.create(GesturePriority.Low, GestureMask.IgnoreInternal);
+            TapGesture.create({ count: 2 });
+            TapGesture.onAction(() => {
+                this.resetView();
+            });
+            TapGesture.pop();
+            globalThis.Gesture.pop();
+        }, Image);
+        // 地图显示区域
+        Stack.pop();
+        Column.pop();
+    }
+    // 重置视图
+    private resetView() {
+        Context.animateTo({ duration: 300, curve: Curve.EaseOut }, () => {
+            this.scaleValue = 1.0;
+            this.pinchValue = 1.0;
+            this.offsetX = 0;
+            this.offsetY = 0;
+            this.lastOffsetX = 0;
+            this.lastOffsetY = 0;
+        });
+    }
+    // 缩放时调整偏移量
+    private adjustOffsetOnScale() {
+        // 简单处理：缩放时重置偏移
+        if (this.scaleValue <= 1.0) {
+            this.offsetX = 0;
+            this.offsetY = 0;
+        }
+    }
+    // 限制偏移范围
+    private clampOffset() {
+        // 计算最大允许偏移量
+        const maxOffset = (this.scaleValue - 1) * 200;
+        this.offsetX = Math.max(-maxOffset, Math.min(maxOffset, this.offsetX));
+        this.offsetY = Math.max(-maxOffset, Math.min(maxOffset, this.offsetY));
+    }
+    rerender() {
+        this.updateDirtyElements();
+    }
 }
 registerNamedRoute(() => new MainApp(undefined, {}), "", { bundleName: "com.example.uestc_charger_monitor", moduleName: "entry", pagePath: "pages/Index", pageFullPath: "entry/src/main/ets/pages/Index", integratedHsp: "false", moduleType: "followWithHap" });

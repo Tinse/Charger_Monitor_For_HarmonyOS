@@ -1,57 +1,4 @@
 {
-  "HVIGOR": {
-    "IS_INCREMENTAL": true,
-    "IS_DAEMON": true,
-    "IS_PARALLEL": true,
-    "IS_HVIGORFILE_TYPE_CHECK": true,
-    "IS_EXECUTION_OHPM_BY_HVIGOR": false,
-    "BUILD_ANALYSIS_MODE": "ultrafine",
-    "TASK_TIME": {
-      "923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf": {
-        "init": 357500,
-        "PreBuild": 22698200,
-        "CreateModuleInfo": 557900,
-        "ConfigureCmake": 304300,
-        "MergeProfile": 6212400,
-        "CreateBuildProfile": 1716300,
-        "PreCheckSyscap": 301600,
-        "GeneratePkgSdkInfo": 1857000,
-        "ProcessIntegratedHsp": 517100,
-        "BuildNativeWithCmake": 249700,
-        "MakePackInfo": 3303900,
-        "SyscapTransform": 1935800,
-        "ProcessProfile": 117218700,
-        "ProcessStartupConfig": 1465000,
-        "BuildNativeWithNinja": 426000,
-        "ProcessLibs": 3634100,
-        "CompileResource": 192854600,
-        "BuildJS": 1904600,
-        "CompileArkTS": 907962500,
-        "GeneratePkgModuleJson": 2525600,
-        "ProcessCompiledResources": 470900,
-        "PackageHap": 1020466900,
-        "PackingCheck": 2697500,
-        "SignHap": 128729300,
-        "CollectDebugSymbol": 836800,
-        "assembleHap": 163300
-      },
-      "APP": {
-        "init": 475800
-      }
-    },
-    "CUSTOM_TASK_TIME": {},
-    "CUSTOM_PLUGIN_TIME": {},
-    "APIS": [
-      "getProperty"
-    ],
-    "CONFIG_EXPERIMENT": {
-      "ENABLE_MODULE_SKIP": false,
-      "ENABLE_CPP_FUNCTION_LEVEL_INCREMENTAL": false
-    },
-    "CONFIG_PROPERTIES": {},
-    "TOTAL_TIME": 2798345600,
-    "BUILD_ID": "202605151833050690"
-  },
   "HVIGOR_OHOS_PLUGIN": {
     "MODULES": [
       {
@@ -103,9 +50,6 @@
         ],
         "PACKAGE_JSON": [],
         "MODULE_TYPE": "entry",
-        "INCREMENTAL_TASKS": {
-          "COMPILE_ARKTS": true
-        },
         "IS_INCREMENTAL_MODULE": true
       }
     ],
@@ -114,5 +58,44 @@
     "PACKAGE_JSON": [],
     "BUILD_MODE": "debug",
     "USE_NORMALIZED_OHMURL": true
+  },
+  "HVIGOR": {
+    "IS_INCREMENTAL": true,
+    "IS_DAEMON": true,
+    "IS_PARALLEL": true,
+    "IS_HVIGORFILE_TYPE_CHECK": true,
+    "IS_EXECUTION_OHPM_BY_HVIGOR": false,
+    "BUILD_ANALYSIS_MODE": "ultrafine",
+    "TASK_TIME": {
+      "923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf": {
+        "PreBuild": 23956100,
+        "CreateModuleInfo": 426000,
+        "ConfigureCmake": 166500,
+        "PreCheckSyscap": 300600,
+        "GeneratePkgSdkInfo": 1528300,
+        "ProcessIntegratedHsp": 387800,
+        "BuildNativeWithCmake": 161100,
+        "SyscapTransform": 1789000,
+        "ProcessStartupConfig": 1823200,
+        "BuildNativeWithNinja": 485300,
+        "BuildJS": 2128900,
+        "ProcessCompiledResources": 479100,
+        "PackingCheck": 2827500,
+        "CollectDebugSymbol": 659600,
+        "assembleHap": 147200
+      }
+    },
+    "CUSTOM_TASK_TIME": {},
+    "CUSTOM_PLUGIN_TIME": {},
+    "APIS": [
+      "getProperty"
+    ],
+    "CONFIG_EXPERIMENT": {
+      "ENABLE_MODULE_SKIP": false,
+      "ENABLE_CPP_FUNCTION_LEVEL_INCREMENTAL": false
+    },
+    "CONFIG_PROPERTIES": {},
+    "TOTAL_TIME": 460348400,
+    "BUILD_ID": "202605152015303300"
   }
 }

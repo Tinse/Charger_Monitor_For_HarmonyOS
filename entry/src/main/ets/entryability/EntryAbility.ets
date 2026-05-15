@@ -1,4 +1,4 @@
-import { AbilityConstant, ConfigurationConstant, UIAbility, Want, abilityAccessCtrl, bundleManager, Permissions, PermissionRequestResult, common } from '@kit.AbilityKit';
+import { AbilityConstant, ConfigurationConstant, UIAbility, Want, abilityAccessCtrl, bundleManager, Permissions, PermissionRequestResult, common, Configuration } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
@@ -11,6 +11,9 @@ const LOCATION_PERMISSIONS: Array<Permissions> = [
   'ohos.permission.APPROXIMATELY_LOCATION' as Permissions
 ];
 
+// 系统主题状态的 AppStorage key
+export const APP_STORAGE_KEY_SYSTEM_DARK_MODE = 'systemDarkMode';
+
 export default class EntryAbility extends UIAbility {
   async onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): Promise<void> {
     try {
@@ -20,10 +23,37 @@ export default class EntryAbility extends UIAbility {
       hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', error.message);
     }
 
+    // 初始化系统主题状态到 AppStorage
+    this.updateSystemDarkMode();
+
     // 检查定位权限状态（不自动申请，遵循最小权限原则）
     await this.checkLocationPermissions();
 
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
+  }
+
+  // 更新系统深色模式状态到 AppStorage
+  private updateSystemDarkMode(colorMode?: ConfigurationConstant.ColorMode): void {
+    try {
+      // 使用传入的 colorMode 或从 context 获取
+      const mode = colorMode ?? this.context.config.colorMode;
+      // colorMode: COLOR_MODE_DARK = 0, COLOR_MODE_LIGHT = 1
+      const isDark = mode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+      AppStorage.setOrCreate<boolean>(APP_STORAGE_KEY_SYSTEM_DARK_MODE, isDark);
+      hilog.info(DOMAIN, 'testTag', 'System dark mode updated: %{public}s, colorMode: %{public}d', isDark.toString(), mode);
+    } catch (err) {
+      const error = err as BusinessError;
+      hilog.error(DOMAIN, 'testTag', 'Failed to update system dark mode: %{public}s', error.message);
+      // 默认深色
+      AppStorage.setOrCreate<boolean>(APP_STORAGE_KEY_SYSTEM_DARK_MODE, true);
+    }
+  }
+
+  // 监听系统配置变化（包括主题变化）
+  onConfigurationUpdate(newConfig: Configuration): void {
+    hilog.info(DOMAIN, 'testTag', 'Configuration updated, colorMode: %{public}d', newConfig.colorMode);
+    // 使用 newConfig.colorMode 更新系统深色模式状态
+    this.updateSystemDarkMode(newConfig.colorMode);
   }
 
   onDestroy(): void {
@@ -51,6 +81,8 @@ export default class EntryAbility extends UIAbility {
   onForeground(): void {
     // Ability从后台回到前台
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
+    // 更新系统深色模式状态（确保从后台回到前台时同步）
+    this.updateSystemDarkMode();
   }
 
   onBackground(): void {
