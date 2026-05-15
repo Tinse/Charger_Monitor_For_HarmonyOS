@@ -55,5 +55,9 @@
 			"type":	"media",
 			"name":	"map",
 			"id":	"0x0100000D"
+		}, {
+			"type":	"media",
+			"name":	"charger_icon",
+			"id":	"0x0100000E"
 		}]
 }

@@ -16744,3 +16744,14 @@ Error Message: Failed to parse the JSON file: incorrect format. At file: E:\code
 [2026-05-15T21:56:23.950] [DEBUG] debug-file - Update task entry:default@CollectDebugSymbol input file:E:\code\UESTC_Charger_Monitor_CC\entry\build\default\intermediates\libs\default cache by regenerate.
 [2026-05-15T21:56:23.950] [DEBUG] debug-file - Update task entry:default@CollectDebugSymbol output file:E:\code\UESTC_Charger_Monitor_CC\entry\build\default\outputs\default\symbol cache.
 [2026-05-15T21:56:23.950] [DEBUG] debug-file - Incremental task entry:default@CollectDebugSymbol post-execution cost:1 ms .
+[2026-05-15T21:56:23.969] [DEBUG] debug-file - Cleanup worker 18.
+[2026-05-15T21:56:23.969] [DEBUG] debug-file - Worker 18 has been cleaned up.
+[2026-05-15T21:56:23.969] [DEBUG] debug-file - Current idle worker size: 1.
+[2026-05-15T21:56:23.969] [DEBUG] debug-file - Current resident worker size: 2.
+[2026-05-15T21:56:23.969] [DEBUG] debug-file - hvigor build process will be closed.
+[2026-05-15T21:56:23.969] [DEBUG] debug-file - java daemon socket close code:1000 reason:close by user
+[2026-05-15T21:56:23.974] [DEBUG] debug-file - session manager: send message to worker process.
+[2026-05-15T21:56:23.974] [DEBUG] debug-file - session manager: send message to worker process.
+[2026-05-15T21:56:23.974] [DEBUG] debug-file - watch worker: worker id should be larger than 0. Nothing will be sent to any worker thread.
+[2026-05-15T21:56:23.975] [DEBUG] debug-file - worker[18] exits with exit code 1.
+[2026-05-15T21:56:23.975] [DEBUG] debug-file - watch worker: worker id should be larger than 0. Nothing will be sent to any worker thread.

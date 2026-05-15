@@ -28,7 +28,7 @@ export class ConfigManager {
             const prefs = await initPreferences();
             const configJson = await prefs.get(STORAGE_KEY, '{}');
             if (typeof configJson === 'string') {
-                const configStorage: ConfigStorage = JSON.parse(configJson);
+                const configStorage = JSON.parse(configJson) as ConfigStorage;
                 // 验证配置数据格式
                 if (!configStorage.configs) {
                     configStorage.configs = [];
