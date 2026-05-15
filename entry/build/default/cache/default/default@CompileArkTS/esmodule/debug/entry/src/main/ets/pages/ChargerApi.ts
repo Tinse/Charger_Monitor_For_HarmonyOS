@@ -1,10 +1,10 @@
 import http from "@ohos:net.http";
 import geoLocationManager from "@ohos:geoLocationManager";
 import abilityAccessCtrl from "@ohos:abilityAccessCtrl";
-import type { Permissions } from "@ohos:abilityAccessCtrl";
 import bundleManager from "@ohos:bundle.bundleManager";
-import type { BusinessError } from "@ohos:base";
+import type { Permissions } from "@ohos:abilityAccessCtrl";
 import type common from "@ohos:app.ability.common";
+import type { BusinessError } from "@ohos:base";
 import type { OutletDetail, StationData, StationBrief, StationQueryResult } from './ChargerModels';
 interface HttpHeaders {
     "sec-ch-ua-platform": string;
@@ -71,8 +71,8 @@ const DEFAULT_LATITUDE = 40.74566536567867;
 const DEFAULT_LONGITUDE = 103.92188101700906;
 // 权限常量
 const LOCATION_PERMISSIONS: Array<Permissions> = [
-    'ohos.permission.LOCATION',
-    'ohos.permission.APPROXIMATELY_LOCATION'
+    'ohos.permission.LOCATION' as Permissions,
+    'ohos.permission.APPROXIMATELY_LOCATION' as Permissions
 ];
 // 地球半径（米）
 const EARTH_RADIUS = 6378137.0;
@@ -215,9 +215,9 @@ export class ChargerApi {
                 readTimeout: 15000 // 15秒读取超时
             });
             if (response.responseCode === 200) {
-                let data: ApiResponseData = JSON.parse(response.result as string);
+                let data = JSON.parse(response.result as string) as ApiResponseData;
                 if (data.code == "1" && data.data) {
-                    let d: OutletDetailData = data.data as OutletDetailData;
+                    let d = data.data as OutletDetailData;
                     let powerStr = d.powerFee?.billingPower || "0W";
                     let power_w = parseInt(powerStr.replace(/[^0-9]/g, '')) || 0;
                     return {
@@ -247,11 +247,11 @@ export class ChargerApi {
                     readTimeout: 15000 // 15秒读取超时
                 });
                 if (response.responseCode === 200) {
-                    let data: ApiResponseData = JSON.parse(response.result as string);
+                    let data = JSON.parse(response.result as string) as ApiResponseData;
                     if (data.code == "1") {
                         let outlets: OutletDetail[] = [];
                         let promises: Promise<void>[] = [];
-                        let outletItems: OutletItem[] = data.data as OutletItem[] || [];
+                        let outletItems = data.data as OutletItem[] || [];
                         for (let item of outletItems) {
                             let rawStatus = item.currentChargingRecordId || 0;
                             let status = [1, 2, 3].includes(rawStatus) ? rawStatus : 3;
@@ -387,7 +387,7 @@ export class ChargerApi {
             });
             console.log('📡 API response code:', response.responseCode);
             if (response.responseCode === 200) {
-                let rawData: NearbyStationResponse = JSON.parse(response.result as string);
+                let rawData = JSON.parse(response.result as string) as NearbyStationResponse;
                 console.log('📡 API response code:', rawData.code);
                 if (rawData && rawData.data && rawData.data.elecStationData) {
                     console.log('🔍 Number of stations found:', rawData.data.elecStationData.length);

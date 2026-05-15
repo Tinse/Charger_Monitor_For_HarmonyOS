@@ -1,10 +1,10 @@
 {
   "modulePathMap": {
-    "entry": "E:\\code\\UESTC_Charger_Monitor\\entry"
+    "entry": "E:\\code\\UESTC_Charger_Monitor_CC\\entry"
   },
   "compileMode": "esmodule",
-  "projectRootPath": "E:\\code\\UESTC_Charger_Monitor",
-  "nodeModulesPath": "E:\\code\\UESTC_Charger_Monitor\\entry\\build\\default\\intermediates\\loader_out\\default\\node_modules",
+  "projectRootPath": "E:\\code\\UESTC_Charger_Monitor_CC",
+  "nodeModulesPath": "E:\\code\\UESTC_Charger_Monitor_CC\\entry\\build\\default\\intermediates\\loader_out\\default\\node_modules",
   "byteCodeHarInfo": {},
   "declarationEntry": [],
   "moduleName": "entry",
@@ -12,7 +12,7 @@
   "harNameOhmMap": {},
   "packageManagerType": "ohpm",
   "compileEntry": [
-    "E:\\code\\UESTC_Charger_Monitor\\entry\\build\\default\\generated\\r\\default\\ResourceTable.ts"
+    "E:\\code\\UESTC_Charger_Monitor_CC\\entry\\build\\default\\generated\\r\\default\\ResourceTable.ts"
   ],
   "otherCompileFiles": [],
   "dynamicImportLibInfo": {},
@@ -20,9 +20,9 @@
   "hspResourcesMap": {},
   "updateVersionInfo": {},
   "customizedHar": false,
-  "anBuildOutPut": "E:\\code\\UESTC_Charger_Monitor\\entry\\build\\default\\intermediates\\loader_out\\default\\an\\arm64-v8a",
+  "anBuildOutPut": "E:\\code\\UESTC_Charger_Monitor_CC\\entry\\build\\default\\intermediates\\loader_out\\default\\an\\arm64-v8a",
   "anBuildMode": "type",
   "patchConfig": {
-    "changedFileList": "E:\\code\\UESTC_Charger_Monitor\\entry\\build\\default\\intermediates\\patch\\default\\changedFileList.json"
+    "changedFileList": "E:\\code\\UESTC_Charger_Monitor_CC\\entry\\build\\default\\intermediates\\patch\\default\\changedFileList.json"
   }
 }

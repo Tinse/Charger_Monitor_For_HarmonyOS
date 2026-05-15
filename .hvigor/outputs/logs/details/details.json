@@ -50,14 +50,16 @@
         ],
         "PACKAGE_JSON": [],
         "MODULE_TYPE": "entry",
+        "INCREMENTAL_TASKS": {
+          "COMPILE_ARKTS": true
+        },
         "IS_INCREMENTAL_MODULE": true
       }
     ],
     "NATIVE_COMPILER": "Default",
     "IS_FULL_BUILD": false,
     "PACKAGE_JSON": [],
-    "BUILD_MODE": "debug",
-    "USE_NORMALIZED_OHMURL": true
+    "BUILD_MODE": "debug"
   },
   "HVIGOR": {
     "IS_INCREMENTAL": true,
@@ -68,21 +70,32 @@
     "BUILD_ANALYSIS_MODE": "ultrafine",
     "TASK_TIME": {
       "923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf": {
-        "PreBuild": 20363700,
-        "CreateModuleInfo": 351100,
-        "ConfigureCmake": 164900,
-        "PreCheckSyscap": 163800,
-        "GeneratePkgSdkInfo": 1324900,
-        "ProcessIntegratedHsp": 350100,
-        "BuildNativeWithCmake": 169900,
-        "SyscapTransform": 1453100,
-        "ProcessStartupConfig": 1039700,
-        "BuildNativeWithNinja": 285300,
-        "BuildJS": 1510100,
-        "ProcessCompiledResources": 443900,
-        "PackingCheck": 1975300,
-        "CollectDebugSymbol": 496800,
-        "assembleHap": 109200
+        "CreateModuleInfo": 628000,
+        "ConfigureCmake": 652400,
+        "MergeProfile": 8094500,
+        "CreateBuildProfile": 2510300,
+        "PreCheckSyscap": 412900,
+        "GeneratePkgContextInfo": 6383900,
+        "GeneratePkgSdkInfo": 1884300,
+        "ProcessIntegratedHsp": 689800,
+        "BuildNativeWithCmake": 229100,
+        "SyscapTransform": 2351400,
+        "ProcessProfile": 118794200,
+        "ProcessRouterMap": 9340000,
+        "ProcessShareConfig": 4862600,
+        "ProcessStartupConfig": 1701900,
+        "BuildNativeWithNinja": 429500,
+        "GenerateLoaderJson": 9686500,
+        "CompileResource": 225606300,
+        "BuildJS": 1758100,
+        "CompileArkTS": 4853577300,
+        "GeneratePkgModuleJson": 2348200,
+        "ProcessCompiledResources": 501500,
+        "PackageHap": 992875400,
+        "PackingCheck": 4532300,
+        "SignHap": 698757700,
+        "CollectDebugSymbol": 854700,
+        "assembleHap": 155900
       }
     },
     "CUSTOM_TASK_TIME": {},
@@ -95,7 +108,7 @@
       "ENABLE_CPP_FUNCTION_LEVEL_INCREMENTAL": false
     },
     "CONFIG_PROPERTIES": {},
-    "TOTAL_TIME": 379668700,
-    "BUILD_ID": "202605152108490100"
+    "TOTAL_TIME": 7319585500,
+    "BUILD_ID": "202605152156166120"
   }
 }

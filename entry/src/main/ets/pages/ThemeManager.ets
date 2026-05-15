@@ -1,6 +1,6 @@
 // ThemeManager.ets - 主题管理工具类
 import preferences from '@ohos.data.preferences';
-import common from '@ohos.app.ability.common';
+import { common } from '@kit.AbilityKit';
 
 // 主题模式枚举
 export enum ThemeMode {

@@ -43,9 +43,9 @@
 						"actions":	["ohos.want.action.home"]
 					}],
 				"descriptionId":	16777220,
-				"iconId":	16777230,
+				"iconId":	16777226,
 				"labelId":	16777221,
-				"startWindowIconId":	16777230,
+				"startWindowIconId":	16777226,
 				"startWindowBackgroundId":	16777224
 			}],
 		"extensionAbilities":	[{
@@ -56,7 +56,7 @@
 				"metadata":	[{
 						"name":	"ohos.extension.backup",
 						"resource":	"$profile:backup_config",
-						"resourceId":	16777227
+						"resourceId":	16777229
 					}]
 			}],
 		"requestPermissions":	[{

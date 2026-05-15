@@ -4,12 +4,11 @@ import { StationData, OutletDetail, SORT_MODE, StationBrief, ChargerConfig } fro
 import { ConfigManager } from './ConfigManager';
 import { ThemeManager, ThemeMode, ThemeColors } from './ThemeManager';
 import { APP_STORAGE_KEY_SYSTEM_DARK_MODE } from '../entryability/EntryAbility';
-import common from '@ohos.app.ability.common';
+import { Want, ConfigurationConstant, common } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import promptAction from '@ohos.promptAction';
 import display from '@ohos.display';
 import { geoLocationManager } from '@kit.LocationKit';
-import { Want, ConfigurationConstant } from '@kit.AbilityKit';
-import { BusinessError } from '@kit.BasicServicesKit';
 
 interface StatsResult {
   total: number;
@@ -142,7 +141,7 @@ struct MainApp {
       if (this.currentConfig) {
         // 创建一个新的对象来确保@Watch能够检测到变化
         try {
-          this.stationConfig = JSON.parse(JSON.stringify(this.currentConfig.stations));
+          this.stationConfig = JSON.parse(JSON.stringify(this.currentConfig.stations)) as Record<string, number>;
         } catch (error) {
           console.error('Failed to parse station config:', error);
           this.stationConfig = ConfigManager.getDefaultConfig();

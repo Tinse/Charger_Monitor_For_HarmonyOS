@@ -74,13 +74,13 @@ import { ConfigManager } from "@normalized:N&&&entry/src/main/ets/pages/ConfigMa
 import { ThemeManager, ThemeMode } from "@normalized:N&&&entry/src/main/ets/pages/ThemeManager&";
 import type { ThemeColors } from "@normalized:N&&&entry/src/main/ets/pages/ThemeManager&";
 import { APP_STORAGE_KEY_SYSTEM_DARK_MODE } from "@normalized:N&&&entry/src/main/ets/entryability/EntryAbility&";
+import type Want from "@ohos:app.ability.Want";
+import ConfigurationConstant from "@ohos:app.ability.ConfigurationConstant";
 import type common from "@ohos:app.ability.common";
+import type { BusinessError } from "@ohos:base";
 import promptAction from "@ohos:promptAction";
 import display from "@ohos:display";
 import geoLocationManager from "@ohos:geoLocationManager";
-import type Want from "@ohos:app.ability.Want";
-import ConfigurationConstant from "@ohos:app.ability.ConfigurationConstant";
-import type { BusinessError } from "@ohos:base";
 interface StatsResult {
     total: number;
     free: number;
@@ -337,7 +337,7 @@ class MainApp extends ViewPU {
             if (this.currentConfig) {
                 // 创建一个新的对象来确保@Watch能够检测到变化
                 try {
-                    this.stationConfig = JSON.parse(JSON.stringify(this.currentConfig.stations));
+                    this.stationConfig = JSON.parse(JSON.stringify(this.currentConfig.stations)) as Record<string, number>;
                 }
                 catch (error) {
                     console.error('Failed to parse station config:', error);
@@ -601,7 +601,7 @@ class MainApp extends ViewPU {
                                 configs: this.__configs,
                                 currentConfig: this.__currentConfig,
                                 theme: this.theme
-                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 316, col: 13 });
+                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 315, col: 13 });
                             ViewPU.create(componentCall);
                             let paramsLambda = () => {
                                 return {
@@ -630,7 +630,7 @@ class MainApp extends ViewPU {
                 {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         if (isInitialRender) {
-                            let componentCall = new MapViewerUI(this, { theme: this.theme }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 328, col: 11 });
+                            let componentCall = new MapViewerUI(this, { theme: this.theme }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 327, col: 11 });
                             ViewPU.create(componentCall);
                             let paramsLambda = () => {
                                 return {
@@ -665,7 +665,7 @@ class MainApp extends ViewPU {
                                 onSaveConfig: (newConfig: Record<string, number>) => {
                                     this.handleSaveConfigRequest(newConfig);
                                 }
-                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 332, col: 11 });
+                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 331, col: 11 });
                             ViewPU.create(componentCall);
                             let paramsLambda = () => {
                                 return {
@@ -2685,7 +2685,7 @@ class MapViewerUI extends ViewPU {
             });
         }, Stack);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Image.create({ "id": 16777229, "type": 20000, params: [], "bundleName": "com.example.uestc_charger_monitor", "moduleName": "entry" });
+            Image.create({ "id": 16777227, "type": 20000, params: [], "bundleName": "com.example.uestc_charger_monitor", "moduleName": "entry" });
             Image.width('100%');
             Image.height('100%');
             Image.objectFit(ImageFit.Contain);
