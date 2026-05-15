@@ -1,0 +1,72 @@
+[
+    {
+        "duration": 28614600,
+        "endTime": 2410132368900,
+        "name": "Total",
+        "parentEvent": "generate merged abc by es2abc (async)",
+        "startTime": 2410103754300
+    },
+    {
+        "duration": 11924800,
+        "endTime": 2410115699900,
+        "name": "Compile",
+        "parentEvent": "Total",
+        "startTime": 2410103775100
+    },
+    {
+        "duration": 828200,
+        "endTime": 2410105256300,
+        "name": "Read input and cache (async)",
+        "parentEvent": "Compile",
+        "startTime": 2410104428100
+    },
+    {
+        "duration": 10354400,
+        "endTime": 2410115139200,
+        "name": "Compile file (async)",
+        "parentEvent": "Compile",
+        "startTime": 2410104784800
+    },
+    {
+        "duration": 4302100,
+        "endTime": 2410109093200,
+        "name": "Parse (async)",
+        "parentEvent": "Compile file (async)",
+        "startTime": 2410104791100
+    },
+    {
+        "duration": 9820000,
+        "endTime": 2410114998700,
+        "name": "Compile to program (async)",
+        "parentEvent": "Compile file (async)",
+        "startTime": 2410105178700
+    },
+    {
+        "duration": 2300,
+        "endTime": 2410115706100,
+        "name": "Resolve file dep relations",
+        "parentEvent": "Total",
+        "startTime": 2410115703800
+    },
+    {
+        "duration": 16661800,
+        "endTime": 2410132368000,
+        "name": "Emit abc",
+        "parentEvent": "Total",
+        "startTime": 2410115706200
+    },
+    {
+        "duration": 7017200,
+        "endTime": 2410122964400,
+        "name": "Emit cache file",
+        "parentEvent": "Emit abc",
+        "startTime": 2410115947200
+    },
+    {
+        "duration": 9002000,
+        "endTime": 2410131969200,
+        "name": "Emit merged program",
+        "parentEvent": "Emit abc",
+        "startTime": 2410122967200
+    }
+]
