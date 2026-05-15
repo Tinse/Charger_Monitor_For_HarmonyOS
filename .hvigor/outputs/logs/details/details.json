@@ -8,20 +8,35 @@
     "BUILD_ANALYSIS_MODE": "ultrafine",
     "TASK_TIME": {
       "923fe53966c6cd9343e11af776cd4b05be315ea4b200b02e4d5dfb0f929b73bf": {
-        "CreateModuleInfo": 522700,
-        "ConfigureCmake": 273000,
-        "PreCheckSyscap": 363300,
-        "GeneratePkgSdkInfo": 1661500,
-        "ProcessIntegratedHsp": 490900,
-        "BuildNativeWithCmake": 216400,
-        "SyscapTransform": 1860200,
-        "ProcessStartupConfig": 1519700,
-        "BuildNativeWithNinja": 449600,
-        "BuildJS": 2151500,
-        "ProcessCompiledResources": 614100,
-        "PackingCheck": 3607100,
-        "CollectDebugSymbol": 774000,
-        "assembleHap": 166500
+        "init": 357500,
+        "PreBuild": 22698200,
+        "CreateModuleInfo": 557900,
+        "ConfigureCmake": 304300,
+        "MergeProfile": 6212400,
+        "CreateBuildProfile": 1716300,
+        "PreCheckSyscap": 301600,
+        "GeneratePkgSdkInfo": 1857000,
+        "ProcessIntegratedHsp": 517100,
+        "BuildNativeWithCmake": 249700,
+        "MakePackInfo": 3303900,
+        "SyscapTransform": 1935800,
+        "ProcessProfile": 117218700,
+        "ProcessStartupConfig": 1465000,
+        "BuildNativeWithNinja": 426000,
+        "ProcessLibs": 3634100,
+        "CompileResource": 192854600,
+        "BuildJS": 1904600,
+        "CompileArkTS": 907962500,
+        "GeneratePkgModuleJson": 2525600,
+        "ProcessCompiledResources": 470900,
+        "PackageHap": 1020466900,
+        "PackingCheck": 2697500,
+        "SignHap": 128729300,
+        "CollectDebugSymbol": 836800,
+        "assembleHap": 163300
+      },
+      "APP": {
+        "init": 475800
       }
     },
     "CUSTOM_TASK_TIME": {},
@@ -34,8 +49,8 @@
       "ENABLE_CPP_FUNCTION_LEVEL_INCREMENTAL": false
     },
     "CONFIG_PROPERTIES": {},
-    "TOTAL_TIME": 440871900,
-    "BUILD_ID": "202605151724429720"
+    "TOTAL_TIME": 2798345600,
+    "BUILD_ID": "202605151833050690"
   },
   "HVIGOR_OHOS_PLUGIN": {
     "MODULES": [
@@ -88,12 +103,16 @@
         ],
         "PACKAGE_JSON": [],
         "MODULE_TYPE": "entry",
+        "INCREMENTAL_TASKS": {
+          "COMPILE_ARKTS": true
+        },
         "IS_INCREMENTAL_MODULE": true
       }
     ],
     "NATIVE_COMPILER": "Default",
     "IS_FULL_BUILD": false,
     "PACKAGE_JSON": [],
-    "BUILD_MODE": "debug"
+    "BUILD_MODE": "debug",
+    "USE_NORMALIZED_OHMURL": true
   }
 }
