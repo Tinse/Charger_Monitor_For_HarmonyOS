@@ -20,6 +20,12 @@ export interface StationBrief {
     distance?: number; // 距离（米）
     formattedDistance?: string; // 格式化后的距离显示
 }
+// 站点查询结果（包含位置状态）
+export interface StationQueryResult {
+    stations: StationBrief[];
+    locationStatus: string; // 位置状态描述
+    needOpenLocationService?: boolean; // 是否需要提示用户开启定位服务
+}
 // 定义排序模式
 interface SortModeType {
     SERIAL: number;

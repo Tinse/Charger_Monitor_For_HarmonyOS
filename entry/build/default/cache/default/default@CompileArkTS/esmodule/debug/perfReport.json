@@ -1,72 +1,44 @@
 [
     {
-        "duration": 35222100,
-        "endTime": 7901339687300,
+        "duration": 19209600,
+        "endTime": 13357798900600,
         "name": "Total",
         "parentEvent": "generate merged abc by es2abc (async)",
-        "startTime": 7901304465200
+        "startTime": 13357779691000
     },
     {
-        "duration": 18159800,
-        "endTime": 7901322649400,
+        "duration": 9283700,
+        "endTime": 13357788996400,
         "name": "Compile",
         "parentEvent": "Total",
-        "startTime": 7901304489600
+        "startTime": 13357779712700
     },
     {
-        "duration": 7567700,
-        "endTime": 7901312309600,
+        "duration": 8280700,
+        "endTime": 13357788270500,
         "name": "Read input and cache (async)",
         "parentEvent": "Compile",
-        "startTime": 7901304741900
+        "startTime": 13357779989800
     },
     {
-        "duration": 16890700,
-        "endTime": 7901322026000,
-        "name": "Compile file (async)",
-        "parentEvent": "Compile",
-        "startTime": 7901305135300
-    },
-    {
-        "duration": 10545100,
-        "endTime": 7901315683800,
-        "name": "Parse (async)",
-        "parentEvent": "Compile file (async)",
-        "startTime": 7901305138700
-    },
-    {
-        "duration": 16439300,
-        "endTime": 7901321892200,
-        "name": "Compile to program (async)",
-        "parentEvent": "Compile file (async)",
-        "startTime": 7901305452900
-    },
-    {
-        "duration": 2100,
-        "endTime": 7901322655900,
+        "duration": 1700,
+        "endTime": 13357789001100,
         "name": "Resolve file dep relations",
         "parentEvent": "Total",
-        "startTime": 7901322653800
+        "startTime": 13357788999400
     },
     {
-        "duration": 17030400,
-        "endTime": 7901339686400,
+        "duration": 9898300,
+        "endTime": 13357798899700,
         "name": "Emit abc",
         "parentEvent": "Total",
-        "startTime": 7901322656000
+        "startTime": 13357789001400
     },
     {
-        "duration": 6422700,
-        "endTime": 7901329324700,
-        "name": "Emit cache file",
-        "parentEvent": "Emit abc",
-        "startTime": 7901322902000
-    },
-    {
-        "duration": 9947400,
-        "endTime": 7901339293400,
+        "duration": 9359200,
+        "endTime": 13357798584000,
         "name": "Emit merged program",
         "parentEvent": "Emit abc",
-        "startTime": 7901329346000
+        "startTime": 13357789224800
     }
 ]

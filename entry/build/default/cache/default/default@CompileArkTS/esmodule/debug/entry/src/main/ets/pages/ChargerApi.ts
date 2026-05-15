@@ -5,7 +5,7 @@ import type { Permissions } from "@ohos:abilityAccessCtrl";
 import bundleManager from "@ohos:bundle.bundleManager";
 import type { BusinessError } from "@ohos:base";
 import type common from "@ohos:app.ability.common";
-import type { OutletDetail, StationData, StationBrief } from './ChargerModels';
+import type { OutletDetail, StationData, StationBrief, StationQueryResult } from './ChargerModels';
 interface HttpHeaders {
     "sec-ch-ua-platform": string;
     "user-agent": string;
@@ -290,52 +290,80 @@ export class ChargerApi {
         return null;
     }
     // 获取附近的站点列表 (用于 Picker)
-    static async fetchNearbyStations(context?: common.UIAbilityContext): Promise<StationBrief[]> {
+    static async fetchNearbyStations(context?: common.UIAbilityContext): Promise<StationQueryResult> {
         let httpRequest = http.createHttp();
         let url = "https://wemp.issks.com/device/v1/near/station";
         try {
-            // 直接尝试获取当前位置
             console.log('=== 开始获取附近站点 ===');
-            console.log('Attempting to get current location...');
-            let userLocation: LocationResult;
+            // 初始化为默认坐标，确保变量一定有值
+            let userLocation: LocationResult = {
+                latitude: DEFAULT_LATITUDE,
+                longitude: DEFAULT_LONGITUDE
+            };
+            let locationStatus = "使用默认位置";
+            // 步骤1: 先尝试直接获取位置
+            console.log('Step 1: Attempting to get current location...');
+            let locationSuccess = false;
             try {
-                userLocation = await ChargerApi.getCurrentLocation();
-                console.log('✅ Location obtained:', userLocation.latitude, userLocation.longitude);
-                // 检查是否是默认坐标
-                if (userLocation.latitude === DEFAULT_LATITUDE && userLocation.longitude === DEFAULT_LONGITUDE) {
-                    console.log('⚠️ 使用的是默认坐标，可能权限有问题');
-                }
-                else {
-                    console.log('🎯 使用的是实际获取的位置坐标');
+                // 创建一个不捕获异常的版本
+                const requestInfo: geoLocationManager.CurrentLocationRequest = {
+                    priority: geoLocationManager.LocationRequestPriority.FIRST_FIX,
+                    maxAccuracy: 100,
+                    timeoutMs: 10000 // 10秒超时，快速检查
+                };
+                const location = await geoLocationManager.getCurrentLocation(requestInfo);
+                if (location && location.latitude && location.longitude) {
+                    userLocation = {
+                        latitude: location.latitude,
+                        longitude: location.longitude
+                    };
+                    locationSuccess = true;
+                    locationStatus = "已获取实际位置";
+                    console.log('✅ Step 1 SUCCESS: Got location:', location.latitude, location.longitude);
                 }
             }
-            catch (locationError) {
-                console.log('❌ Location failed, checking permissions...');
-                // 如果获取位置失败，检查权限
-                if (context) {
-                    console.log('Requesting permissions...');
-                    const granted = await ChargerApi.requestLocationPermissions(context);
-                    if (granted) {
-                        // 权限申请成功，再次尝试获取位置
-                        userLocation = await ChargerApi.getCurrentLocation();
-                        console.log('✅ Location after permission granted:', userLocation.latitude, userLocation.longitude);
+            catch (error) {
+                console.log('❌ Step 1 FAILED: Location access failed:', error);
+                locationSuccess = false;
+            }
+            // 步骤2: 如果获取位置失败，请求权限
+            if (!locationSuccess && context) {
+                console.log('Step 2: Requesting location permissions...');
+                const granted = await ChargerApi.requestLocationPermissions(context);
+                if (granted) {
+                    console.log('✅ Step 2 SUCCESS: Permissions granted, retrying location...');
+                    // 步骤3: 权限授予后再次尝试获取位置
+                    try {
+                        const requestInfo: geoLocationManager.CurrentLocationRequest = {
+                            priority: geoLocationManager.LocationRequestPriority.FIRST_FIX,
+                            maxAccuracy: 100,
+                            timeoutMs: 30000
+                        };
+                        const location = await geoLocationManager.getCurrentLocation(requestInfo);
+                        if (location && location.latitude && location.longitude) {
+                            userLocation = {
+                                latitude: location.latitude,
+                                longitude: location.longitude
+                            };
+                            locationSuccess = true;
+                            locationStatus = "已获取实际位置";
+                            console.log('✅ Step 3 SUCCESS: Got location after permission:', location.latitude, location.longitude);
+                        }
                     }
-                    else {
-                        // 权限被拒绝，使用默认坐标
-                        console.log('❌ Permission denied, using default location');
-                        userLocation = {
-                            latitude: DEFAULT_LATITUDE,
-                            longitude: DEFAULT_LONGITUDE
+                    catch (error) {
+                        console.log('❌ Step 3 FAILED: Still cannot get location:', error);
+                        locationStatus = "定位服务未开启，使用默认位置";
+                        // 返回特殊状态，让UI层提示用户开启定位服务
+                        return {
+                            stations: [],
+                            locationStatus: locationStatus,
+                            needOpenLocationService: true
                         };
                     }
                 }
                 else {
-                    // 没有context，使用默认坐标
-                    console.log('❌ No context provided, using default location');
-                    userLocation = {
-                        latitude: DEFAULT_LATITUDE,
-                        longitude: DEFAULT_LONGITUDE
-                    };
+                    console.log('❌ Step 2 FAILED: Permission denied by user');
+                    locationStatus = "位置权限被拒绝，使用默认位置";
                 }
             }
             console.log('📌 Final user location for API request:', userLocation.latitude, userLocation.longitude);
@@ -357,6 +385,7 @@ export class ChargerApi {
                 connectTimeout: 10000,
                 readTimeout: 15000 // 15秒读取超时
             });
+            console.log('📡 API response code:', response.responseCode);
             if (response.responseCode === 200) {
                 let rawData: NearbyStationResponse = JSON.parse(response.result as string);
                 console.log('📡 API response code:', rawData.code);
@@ -391,14 +420,36 @@ export class ChargerApi {
                     // 按距离排序（从近到远）
                     stations.sort((a, b) => (a.distance || 0) - (b.distance || 0));
                     console.log('✅ Nearby stations fetched and sorted by distance:', stations.length);
-                    console.log('📊 First station distance:', stations[0]?.distance, stations[0]?.formattedDistance);
-                    return stations;
+                    if (stations.length > 0) {
+                        console.log('📊 First station distance:', stations[0]?.distance, stations[0]?.formattedDistance);
+                    }
+                    return {
+                        stations: stations,
+                        locationStatus: locationStatus
+                    };
                 }
+                else {
+                    console.error('❌ API response data is invalid');
+                    return {
+                        stations: [],
+                        locationStatus: locationStatus + "，API返回数据无效"
+                    };
+                }
+            }
+            else {
+                console.error('❌ API request failed with code:', response.responseCode);
+                return {
+                    stations: [],
+                    locationStatus: locationStatus + "，网络请求失败"
+                };
             }
         }
         catch (e) {
             console.error(`❌ Fetch nearby stations failed: ${e}`);
+            return {
+                stations: [],
+                locationStatus: "加载失败: " + String(e)
+            };
         }
-        return [];
     }
 }

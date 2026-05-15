@@ -2,9 +2,12 @@
 import { ChargerApi } from './ChargerApi';
 import { StationData, OutletDetail, SORT_MODE, StationBrief, ChargerConfig } from './ChargerModels';
 import { ConfigManager } from './ConfigManager';
-// import common from '@ohos.app.ability.common'; // 暂时未使用
+import common from '@ohos.app.ability.common';
 import promptAction from '@ohos.promptAction';
 import display from '@ohos.display';
+import { geoLocationManager } from '@kit.LocationKit';
+import { Want } from '@kit.AbilityKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 
 interface StatsResult {
   total: number;
@@ -238,7 +241,10 @@ struct MainApp {
 
         TabContent() {
           StationPickerUI({
-            stationConfig: $stationConfig
+            stationConfig: $stationConfig,
+            onSaveConfig: (newConfig: Record<string, number>) => {
+              this.handleSaveConfigRequest(newConfig);
+            }
           })
         }.tabBar("设置站点")
       }
@@ -771,15 +777,54 @@ struct StationPickerUI {
   }
 
   @Link stationConfig: Record<string, number>;
+  // 保存配置的回调函数
+  onSaveConfig?: (newConfig: Record<string, number>) => void;
 
   @State allStations: StationBrief[] = [];
   @State searchText: string = "";
   @State selectedIds: number[] = [];
   @State isLoading: boolean = false;
+  @State loadingMessage: string = "正在加载站点列表…";
+  @State locationStatus: string = ""; // 位置状态提示
+
+  // 定位服务状态监听回调
+  private locationServiceStateCallback?: (state: boolean) => void;
 
   aboutToAppear() {
     this.loadSelectedStations();
     this.fetchAllStations();
+    this.setupLocationServiceListener();
+  }
+
+  aboutToDisappear() {
+    // 移除定位服务状态监听
+    if (this.locationServiceStateCallback) {
+      try {
+        geoLocationManager.off('locationEnabledChange', this.locationServiceStateCallback);
+      } catch (error) {
+        console.error('Failed to remove location service listener:', error);
+      }
+    }
+  }
+
+  // 设置定位服务状态监听
+  setupLocationServiceListener() {
+    try {
+      this.locationServiceStateCallback = (state: boolean) => {
+        console.log('📍 Location service state changed:', state);
+        
+        // 如果定位服务开启且当前列表为空，自动刷新
+        if (state && this.allStations.length === 0 && !this.isLoading) {
+          console.log('🔄 Auto-refreshing stations after location service enabled');
+          this.fetchAllStations();
+        }
+      };
+      
+      geoLocationManager.on('locationEnabledChange', this.locationServiceStateCallback);
+      console.log('✅ Location service listener registered');
+    } catch (error) {
+      console.error('Failed to setup location service listener:', error);
+    }
   }
 
   // 加载已选中的站点
@@ -790,12 +835,51 @@ struct StationPickerUI {
   // 获取所有可用站点
   async fetchAllStations() {
     this.isLoading = true;
+    this.loadingMessage = "正在获取位置信息…";
     try {
-      this.allStations = await ChargerApi.fetchNearbyStations();
+      // 获取UIAbilityContext并传递给API，以便在需要时请求权限
+      const context = getContext(this) as common.UIAbilityContext;
+      
+      // 调用API获取站点，同时获取位置状态
+      const result = await ChargerApi.fetchNearbyStations(context);
+      this.allStations = result.stations;
+      this.locationStatus = result.locationStatus;
+      
+      // 检查是否需要提示用户开启定位服务
+      if (result.needOpenLocationService) {
+        this.showLocationServiceDialog();
+      }
+
+      if (this.allStations.length === 0 && !result.needOpenLocationService) {
+        this.loadingMessage = "未找到附近充电站";
+        console.error('No stations found. Location status:', this.locationStatus);
+      }
     } catch (error) {
       console.error('Failed to fetch all stations:', error);
+      this.loadingMessage = "加载失败，请检查网络";
     }
     this.isLoading = false;
+  }
+
+  // 跳转到系统设置的位置服务页面
+  openLocationSettings() {
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      const want: Want = {
+        bundleName: 'com.huawei.hmos.settings',
+        abilityName: 'com.huawei.hmos.settings.MainAbility',
+        uri: 'location_manager_settings'
+      };
+      context.startAbility(want)
+        .then(() => {
+          console.log('✅ Opened location settings');
+        })
+        .catch((err: BusinessError) => {
+          console.error(`Failed to open location settings: ${err.code}, ${err.message}`);
+        });
+    } catch (error) {
+      console.error('Failed to open location settings:', error);
+    }
   }
 
   // 切换站点选择状态
@@ -835,10 +919,21 @@ struct StationPickerUI {
         newConfig[station.stationName] = station.stationId;
       });
 
-    // 通知父组件保存配置 - 通过自定义事件或回调
-    // 这里需要父组件传递回调函数来处理配置保存
-    // 暂时先显示保存对话框
-    this.showToast(`已选择${this.selectedIds.length}个站点，请在配置对话框输入名称`, 2000);
+    // 检查是否有有效的配置数据
+    if (Object.keys(newConfig).length === 0) {
+      this.showToast('站点列表加载失败，请检查网络和权限设置', 3000);
+      console.error('No valid station data available. allStations:', this.allStations.length);
+      return;
+    }
+
+    // 调用父组件传递的回调函数来保存配置
+    if (this.onSaveConfig) {
+      this.onSaveConfig(newConfig);
+    } else {
+      // 如果没有回调函数，显示提示
+      this.showToast(`已选择${this.selectedIds.length}个站点，但无法保存配置`, 2000);
+      console.error('onSaveConfig callback not provided');
+    }
   }
 
   build() {
@@ -851,17 +946,58 @@ struct StationPickerUI {
         .backgroundColor('#2c2c2e')
         .fontColor(Color.White)
         .borderRadius(8)
-        .margin({ top: 16, bottom: 16 })
+        .margin({ top: 16, bottom: 8 })
+
+      // 位置状态提示
+      if (this.locationStatus) {
+        Text(this.locationStatus)
+          .fontColor('#8e8e93')
+          .fontSize(12)
+          .width('90%')
+          .margin({ bottom: 8 })
+      }
 
       // 加载状态
       if (this.isLoading) {
         Row() {
           LoadingProgress()
-          Text('正在加载站点列表…').fontColor(Color.White).fontSize(14).margin({ left: 10 })
+          Text(this.loadingMessage).fontColor(Color.White).fontSize(14).margin({ left: 10 })
         }
         .width('100%')
         .justifyContent(FlexAlign.Center)
         .padding(20)
+      } else if (this.allStations.length === 0) {
+        // 空状态提示
+        Column({ space: 16 }) {
+          Text('📭')
+            .fontSize(48)
+          Text('未找到附近充电站')
+            .fontColor(Color.White)
+            .fontSize(16)
+          if (this.locationStatus.includes('默认位置')) {
+            Text('请确保设备定位服务已开启')
+              .fontColor('#8e8e93')
+              .fontSize(14)
+          }
+          if (this.locationStatus.includes('网络')) {
+            Text('请检查网络连接')
+              .fontColor('#8e8e93')
+              .fontSize(14)
+          }
+          // 刷新按钮
+          Button('刷新')
+            .backgroundColor('#30d158')
+            .fontColor(Color.White)
+            .width(120)
+            .height(40)
+            .margin({ top: 16 })
+            .onClick(() => {
+              this.fetchAllStations();
+            })
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .justifyContent(FlexAlign.Center)
       } else {
         // 站点列表
         List({ space: 8 }) {
@@ -892,6 +1028,13 @@ struct StationPickerUI {
                       .fontColor('#8e8e93')
                       .fontSize(12)
                   }
+                  
+                  // 显示距离
+                  if (station.formattedDistance) {
+                    Text(`距离: ${station.formattedDistance}`)
+                      .fontColor('#30d158')
+                      .fontSize(11)
+                  }
                 }
                 .layoutWeight(1)
               }
@@ -915,6 +1058,25 @@ struct StationPickerUI {
 
     }
     .width('100%').height('100%').backgroundColor('#000000')
+  }
+
+  // 显示开启定位服务弹窗
+  showLocationServiceDialog() {
+    promptAction.showDialog({
+      title: '📍 需要开启定位服务',
+      message: '请前往系统设置开启位置服务，以获取附近的充电站信息',
+      buttons: [
+        { text: '取消', color: '#8e8e93' },
+        { text: '去设置', color: '#30d158' }
+      ]
+    }).then((data: promptAction.ShowDialogSuccessResponse) => {
+      if (data.index === 1) {
+        // 用户点击"去设置"
+        this.openLocationSettings();
+      }
+    }).catch((err: BusinessError) => {
+      console.error('showDialog error:', err);
+    });
   }
 }
 

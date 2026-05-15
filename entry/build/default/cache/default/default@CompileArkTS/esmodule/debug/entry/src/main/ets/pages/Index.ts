@@ -3,10 +3,15 @@ if (!("finalizeConstruction" in ViewPU.prototype)) {
 }
 interface StationPickerUI_Params {
     stationConfig?: Record<string, number>;
+    // 保存配置的回调函数
+    onSaveConfig?: (newConfig: Record<string, number>) => void;
     allStations?: StationBrief[];
     searchText?: string;
     selectedIds?: number[];
     isLoading?: boolean;
+    loadingMessage?: string;
+    locationStatus?: string;
+    locationServiceStateCallback?: (state: boolean) => void;
 }
 interface ChargerMonitorUI_Params {
     stationConfig?: Record<string, number>;
@@ -39,7 +44,12 @@ import { ChargerApi } from "@normalized:N&&&entry/src/main/ets/pages/ChargerApi&
 import { SORT_MODE } from "@normalized:N&&&entry/src/main/ets/pages/ChargerModels&";
 import type { StationData, OutletDetail, StationBrief, ChargerConfig } from "@normalized:N&&&entry/src/main/ets/pages/ChargerModels&";
 import { ConfigManager } from "@normalized:N&&&entry/src/main/ets/pages/ConfigManager&";
+import type common from "@ohos:app.ability.common";
+import promptAction from "@ohos:promptAction";
 import display from "@ohos:display";
+import geoLocationManager from "@ohos:geoLocationManager";
+import type Want from "@ohos:app.ability.Want";
+import type { BusinessError } from "@ohos:base";
 interface StatsResult {
     total: number;
     free: number;
@@ -441,7 +451,7 @@ class MainApp extends ViewPU {
                                 stationConfig: this.__stationConfig,
                                 configs: this.__configs,
                                 currentConfig: this.__currentConfig
-                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 232, col: 11 });
+                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 235, col: 11 });
                             ViewPU.create(componentCall);
                             let paramsLambda = () => {
                                 return {
@@ -467,12 +477,18 @@ class MainApp extends ViewPU {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         if (isInitialRender) {
                             let componentCall = new StationPickerUI(this, {
-                                stationConfig: this.__stationConfig
-                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 240, col: 11 });
+                                stationConfig: this.__stationConfig,
+                                onSaveConfig: (newConfig: Record<string, number>) => {
+                                    this.handleSaveConfigRequest(newConfig);
+                                }
+                            }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 243, col: 11 });
                             ViewPU.create(componentCall);
                             let paramsLambda = () => {
                                 return {
-                                    stationConfig: this.stationConfig
+                                    stationConfig: this.stationConfig,
+                                    onSaveConfig: (newConfig: Record<string, number>) => {
+                                        this.handleSaveConfigRequest(newConfig);
+                                    }
                                 };
                             };
                             componentCall.paramsGenerator_ = paramsLambda;
@@ -1412,14 +1428,21 @@ class StationPickerUI extends ViewPU {
             this.paramsGenerator_ = paramsLambda;
         }
         this.__stationConfig = new SynchedPropertyObjectTwoWayPU(params.stationConfig, this, "stationConfig");
+        this.onSaveConfig = undefined;
         this.__allStations = new ObservedPropertyObjectPU([], this, "allStations");
         this.__searchText = new ObservedPropertySimplePU("", this, "searchText");
         this.__selectedIds = new ObservedPropertyObjectPU([], this, "selectedIds");
         this.__isLoading = new ObservedPropertySimplePU(false, this, "isLoading");
+        this.__loadingMessage = new ObservedPropertySimplePU("正在加载站点列表…", this, "loadingMessage");
+        this.__locationStatus = new ObservedPropertySimplePU("", this, "locationStatus");
+        this.locationServiceStateCallback = undefined;
         this.setInitiallyProvidedValue(params);
         this.finalizeConstruction();
     }
     setInitiallyProvidedValue(params: StationPickerUI_Params) {
+        if (params.onSaveConfig !== undefined) {
+            this.onSaveConfig = params.onSaveConfig;
+        }
         if (params.allStations !== undefined) {
             this.allStations = params.allStations;
         }
@@ -1432,6 +1455,15 @@ class StationPickerUI extends ViewPU {
         if (params.isLoading !== undefined) {
             this.isLoading = params.isLoading;
         }
+        if (params.loadingMessage !== undefined) {
+            this.loadingMessage = params.loadingMessage;
+        }
+        if (params.locationStatus !== undefined) {
+            this.locationStatus = params.locationStatus;
+        }
+        if (params.locationServiceStateCallback !== undefined) {
+            this.locationServiceStateCallback = params.locationServiceStateCallback;
+        }
     }
     updateStateVars(params: StationPickerUI_Params) {
     }
@@ -1441,6 +1473,8 @@ class StationPickerUI extends ViewPU {
         this.__searchText.purgeDependencyOnElmtId(rmElmtId);
         this.__selectedIds.purgeDependencyOnElmtId(rmElmtId);
         this.__isLoading.purgeDependencyOnElmtId(rmElmtId);
+        this.__loadingMessage.purgeDependencyOnElmtId(rmElmtId);
+        this.__locationStatus.purgeDependencyOnElmtId(rmElmtId);
     }
     aboutToBeDeleted() {
         this.__stationConfig.aboutToBeDeleted();
@@ -1448,6 +1482,8 @@ class StationPickerUI extends ViewPU {
         this.__searchText.aboutToBeDeleted();
         this.__selectedIds.aboutToBeDeleted();
         this.__isLoading.aboutToBeDeleted();
+        this.__loadingMessage.aboutToBeDeleted();
+        this.__locationStatus.aboutToBeDeleted();
         SubscriberManager.Get().delete(this.id__());
         this.aboutToBeDeletedInternal();
     }
@@ -1470,6 +1506,8 @@ class StationPickerUI extends ViewPU {
     set stationConfig(newValue: Record<string, number>) {
         this.__stationConfig.set(newValue);
     }
+    // 保存配置的回调函数
+    private onSaveConfig?: (newConfig: Record<string, number>) => void;
     private __allStations: ObservedPropertyObjectPU<StationBrief[]>;
     get allStations() {
         return this.__allStations.get();
@@ -1498,9 +1536,55 @@ class StationPickerUI extends ViewPU {
     set isLoading(newValue: boolean) {
         this.__isLoading.set(newValue);
     }
+    private __loadingMessage: ObservedPropertySimplePU<string>;
+    get loadingMessage() {
+        return this.__loadingMessage.get();
+    }
+    set loadingMessage(newValue: string) {
+        this.__loadingMessage.set(newValue);
+    }
+    private __locationStatus: ObservedPropertySimplePU<string>; // 位置状态提示
+    get locationStatus() {
+        return this.__locationStatus.get();
+    }
+    set locationStatus(newValue: string) {
+        this.__locationStatus.set(newValue);
+    }
+    // 定位服务状态监听回调
+    private locationServiceStateCallback?: (state: boolean) => void;
     aboutToAppear() {
         this.loadSelectedStations();
         this.fetchAllStations();
+        this.setupLocationServiceListener();
+    }
+    aboutToDisappear() {
+        // 移除定位服务状态监听
+        if (this.locationServiceStateCallback) {
+            try {
+                geoLocationManager.off('locationEnabledChange', this.locationServiceStateCallback);
+            }
+            catch (error) {
+                console.error('Failed to remove location service listener:', error);
+            }
+        }
+    }
+    // 设置定位服务状态监听
+    setupLocationServiceListener() {
+        try {
+            this.locationServiceStateCallback = (state: boolean) => {
+                console.log('📍 Location service state changed:', state);
+                // 如果定位服务开启且当前列表为空，自动刷新
+                if (state && this.allStations.length === 0 && !this.isLoading) {
+                    console.log('🔄 Auto-refreshing stations after location service enabled');
+                    this.fetchAllStations();
+                }
+            };
+            geoLocationManager.on('locationEnabledChange', this.locationServiceStateCallback);
+            console.log('✅ Location service listener registered');
+        }
+        catch (error) {
+            console.error('Failed to setup location service listener:', error);
+        }
     }
     // 加载已选中的站点
     loadSelectedStations() {
@@ -1509,13 +1593,49 @@ class StationPickerUI extends ViewPU {
     // 获取所有可用站点
     async fetchAllStations() {
         this.isLoading = true;
+        this.loadingMessage = "正在获取位置信息…";
         try {
-            this.allStations = await ChargerApi.fetchNearbyStations();
+            // 获取UIAbilityContext并传递给API，以便在需要时请求权限
+            const context = getContext(this) as common.UIAbilityContext;
+            // 调用API获取站点，同时获取位置状态
+            const result = await ChargerApi.fetchNearbyStations(context);
+            this.allStations = result.stations;
+            this.locationStatus = result.locationStatus;
+            // 检查是否需要提示用户开启定位服务
+            if (result.needOpenLocationService) {
+                this.showLocationServiceDialog();
+            }
+            if (this.allStations.length === 0 && !result.needOpenLocationService) {
+                this.loadingMessage = "未找到附近充电站";
+                console.error('No stations found. Location status:', this.locationStatus);
+            }
         }
         catch (error) {
             console.error('Failed to fetch all stations:', error);
+            this.loadingMessage = "加载失败，请检查网络";
         }
         this.isLoading = false;
+    }
+    // 跳转到系统设置的位置服务页面
+    openLocationSettings() {
+        try {
+            const context = getContext(this) as common.UIAbilityContext;
+            const want: Want = {
+                bundleName: 'com.huawei.hmos.settings',
+                abilityName: 'com.huawei.hmos.settings.MainAbility',
+                uri: 'location_manager_settings'
+            };
+            context.startAbility(want)
+                .then(() => {
+                console.log('✅ Opened location settings');
+            })
+                .catch((err: BusinessError) => {
+                console.error(`Failed to open location settings: ${err.code}, ${err.message}`);
+            });
+        }
+        catch (error) {
+            console.error('Failed to open location settings:', error);
+        }
     }
     // 切换站点选择状态
     toggleStation(stationId: number) {
@@ -1549,10 +1669,21 @@ class StationPickerUI extends ViewPU {
             .forEach(station => {
             newConfig[station.stationName] = station.stationId;
         });
-        // 通知父组件保存配置 - 通过自定义事件或回调
-        // 这里需要父组件传递回调函数来处理配置保存
-        // 暂时先显示保存对话框
-        this.showToast(`已选择${this.selectedIds.length}个站点，请在配置对话框输入名称`, 2000);
+        // 检查是否有有效的配置数据
+        if (Object.keys(newConfig).length === 0) {
+            this.showToast('站点列表加载失败，请检查网络和权限设置', 3000);
+            console.error('No valid station data available. allStations:', this.allStations.length);
+            return;
+        }
+        // 调用父组件传递的回调函数来保存配置
+        if (this.onSaveConfig) {
+            this.onSaveConfig(newConfig);
+        }
+        else {
+            // 如果没有回调函数，显示提示
+            this.showToast(`已选择${this.selectedIds.length}个站点，但无法保存配置`, 2000);
+            console.error('onSaveConfig callback not provided');
+        }
     }
     initialRender() {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
@@ -1577,8 +1708,30 @@ class StationPickerUI extends ViewPU {
             // 搜索框
             TextInput.borderRadius(8);
             // 搜索框
-            TextInput.margin({ top: 16, bottom: 16 });
+            TextInput.margin({ top: 16, bottom: 8 });
         }, TextInput);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            If.create();
+            // 位置状态提示
+            if (this.locationStatus) {
+                this.ifElseBranchUpdateFunction(0, () => {
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create(this.locationStatus);
+                        Text.fontColor('#8e8e93');
+                        Text.fontSize(12);
+                        Text.width('90%');
+                        Text.margin({ bottom: 8 });
+                    }, Text);
+                    Text.pop();
+                });
+            }
+            // 加载状态
+            else {
+                this.ifElseBranchUpdateFunction(1, () => {
+                });
+            }
+        }, If);
+        If.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             If.create();
             // 加载状态
@@ -1594,7 +1747,7 @@ class StationPickerUI extends ViewPU {
                         LoadingProgress.create();
                     }, LoadingProgress);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Text.create('正在加载站点列表…');
+                        Text.create(this.loadingMessage);
                         Text.fontColor(Color.White);
                         Text.fontSize(14);
                         Text.margin({ left: 10 });
@@ -1603,8 +1756,92 @@ class StationPickerUI extends ViewPU {
                     Row.pop();
                 });
             }
-            else {
+            else if (this.allStations.length === 0) {
                 this.ifElseBranchUpdateFunction(1, () => {
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        // 空状态提示
+                        Column.create({ space: 16 });
+                        // 空状态提示
+                        Column.width('100%');
+                        // 空状态提示
+                        Column.layoutWeight(1);
+                        // 空状态提示
+                        Column.justifyContent(FlexAlign.Center);
+                    }, Column);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create('📭');
+                        Text.fontSize(48);
+                    }, Text);
+                    Text.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create('未找到附近充电站');
+                        Text.fontColor(Color.White);
+                        Text.fontSize(16);
+                    }, Text);
+                    Text.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        If.create();
+                        if (this.locationStatus.includes('默认位置')) {
+                            this.ifElseBranchUpdateFunction(0, () => {
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    Text.create('请确保设备定位服务已开启');
+                                    Text.fontColor('#8e8e93');
+                                    Text.fontSize(14);
+                                }, Text);
+                                Text.pop();
+                            });
+                        }
+                        else {
+                            this.ifElseBranchUpdateFunction(1, () => {
+                            });
+                        }
+                    }, If);
+                    If.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        If.create();
+                        if (this.locationStatus.includes('网络')) {
+                            this.ifElseBranchUpdateFunction(0, () => {
+                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                    Text.create('请检查网络连接');
+                                    Text.fontColor('#8e8e93');
+                                    Text.fontSize(14);
+                                }, Text);
+                                Text.pop();
+                            });
+                        }
+                        // 刷新按钮
+                        else {
+                            this.ifElseBranchUpdateFunction(1, () => {
+                            });
+                        }
+                    }, If);
+                    If.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        // 刷新按钮
+                        Button.createWithLabel('刷新');
+                        // 刷新按钮
+                        Button.backgroundColor('#30d158');
+                        // 刷新按钮
+                        Button.fontColor(Color.White);
+                        // 刷新按钮
+                        Button.width(120);
+                        // 刷新按钮
+                        Button.height(40);
+                        // 刷新按钮
+                        Button.margin({ top: 16 });
+                        // 刷新按钮
+                        Button.onClick(() => {
+                            this.fetchAllStations();
+                        });
+                    }, Button);
+                    // 刷新按钮
+                    Button.pop();
+                    // 空状态提示
+                    Column.pop();
+                });
+            }
+            else {
+                this.ifElseBranchUpdateFunction(2, () => {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         // 站点列表
                         List.create({ space: 8 });
@@ -1682,6 +1919,26 @@ class StationPickerUI extends ViewPU {
                                                 Text.pop();
                                             });
                                         }
+                                        // 显示距离
+                                        else {
+                                            this.ifElseBranchUpdateFunction(1, () => {
+                                            });
+                                        }
+                                    }, If);
+                                    If.pop();
+                                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                        If.create();
+                                        // 显示距离
+                                        if (station.formattedDistance) {
+                                            this.ifElseBranchUpdateFunction(0, () => {
+                                                this.observeComponentCreation2((elmtId, isInitialRender) => {
+                                                    Text.create(`距离: ${station.formattedDistance}`);
+                                                    Text.fontColor('#30d158');
+                                                    Text.fontSize(11);
+                                                }, Text);
+                                                Text.pop();
+                                            });
+                                        }
                                         else {
                                             this.ifElseBranchUpdateFunction(1, () => {
                                             });
@@ -1721,6 +1978,24 @@ class StationPickerUI extends ViewPU {
         // 保存按钮
         Button.pop();
         Column.pop();
+    }
+    // 显示开启定位服务弹窗
+    showLocationServiceDialog() {
+        promptAction.showDialog({
+            title: '📍 需要开启定位服务',
+            message: '请前往系统设置开启位置服务，以获取附近的充电站信息',
+            buttons: [
+                { text: '取消', color: '#8e8e93' },
+                { text: '去设置', color: '#30d158' }
+            ]
+        }).then((data: promptAction.ShowDialogSuccessResponse) => {
+            if (data.index === 1) {
+                // 用户点击"去设置"
+                this.openLocationSettings();
+            }
+        }).catch((err: BusinessError) => {
+            console.error('showDialog error:', err);
+        });
     }
     rerender() {
         this.updateDirtyElements();
