@@ -33,9 +33,9 @@
 				"name":	"EntryAbility",
 				"srcEntry":	"./ets/entryability/EntryAbility.ets",
 				"description":	"$string:EntryAbility_desc",
-				"icon":	"$media:layered_image",
+				"icon":	"$media:charger_icon",
 				"label":	"$string:EntryAbility_label",
-				"startWindowIcon":	"$media:startIcon",
+				"startWindowIcon":	"$media:charger_icon",
 				"startWindowBackground":	"$color:start_window_background",
 				"exported":	true,
 				"skills":	[{
@@ -43,9 +43,9 @@
 						"actions":	["ohos.want.action.home"]
 					}],
 				"descriptionId":	16777220,
-				"iconId":	16777219,
+				"iconId":	16777230,
 				"labelId":	16777221,
-				"startWindowIconId":	16777226,
+				"startWindowIconId":	16777230,
 				"startWindowBackgroundId":	16777224
 			}],
 		"extensionAbilities":	[{

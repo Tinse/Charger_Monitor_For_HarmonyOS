@@ -2,15 +2,20 @@ if (!("finalizeConstruction" in ViewPU.prototype)) {
     Reflect.set(ViewPU.prototype, "finalizeConstruction", () => { });
 }
 interface MapViewerUI_Params {
+    theme?: ThemeColors;
     scaleValue?: number;
     pinchValue?: number;
     offsetX?: number;
     offsetY?: number;
     lastOffsetX?: number;
     lastOffsetY?: number;
+    pinchCenterRatioX?: number;
+    pinchCenterRatioY?: number;
     minScale?: number;
     maxScale?: number;
     dragSensitivity?: number;
+    containerWidth?: number;
+    containerHeight?: number;
 }
 interface StationPickerUI_Params {
     stationConfig?: Record<string, number>;
@@ -22,6 +27,7 @@ interface StationPickerUI_Params {
     themeMode?: ThemeMode;
     allStations?: StationBrief[];
     searchText?: string;
+    searchInputText?: string;
     selectedIds?: number[];
     isLoading?: boolean;
     loadingMessage?: string;
@@ -36,6 +42,7 @@ interface ChargerMonitorUI_Params {
     isExpanded?: boolean;
     stations?: StationData[];
     searchText?: string;
+    searchInputText?: string;
     sortMode?: number;
     showSortMenu?: boolean;
     isLoading?: boolean;
@@ -43,6 +50,7 @@ interface ChargerMonitorUI_Params {
     canRefresh?: boolean;
     refreshCooldown?: number;
     screenHeight?: number;
+    screenWidth?: number;
     refreshInterval?: number;
     lastConfigHash?: string;
     cooldownInterval?: number;
@@ -423,7 +431,7 @@ class MainApp extends ViewPU {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create();
             Column.width('100%');
-            Column.height('100%');
+            Column.layoutWeight(1);
             Column.backgroundColor(this.theme.background);
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
@@ -622,15 +630,19 @@ class MainApp extends ViewPU {
                 {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         if (isInitialRender) {
-                            let componentCall = new MapViewerUI(this, {}, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 328, col: 11 });
+                            let componentCall = new MapViewerUI(this, { theme: this.theme }, undefined, elmtId, () => { }, { page: "entry/src/main/ets/pages/Index.ets", line: 328, col: 11 });
                             ViewPU.create(componentCall);
                             let paramsLambda = () => {
-                                return {};
+                                return {
+                                    theme: this.theme
+                                };
                             };
                             componentCall.paramsGenerator_ = paramsLambda;
                         }
                         else {
-                            this.updateStateVarsOfChildByElmtId(elmtId, {});
+                            this.updateStateVarsOfChildByElmtId(elmtId, {
+                                theme: this.theme
+                            });
                         }
                     }, { name: "MapViewerUI" });
                 }
@@ -782,6 +794,7 @@ class ChargerMonitorUI extends ViewPU {
         this.__isExpanded = new ObservedPropertySimplePU(false, this, "isExpanded");
         this.__stations = new ObservedPropertyObjectPU([], this, "stations");
         this.__searchText = new ObservedPropertySimplePU("", this, "searchText");
+        this.__searchInputText = new ObservedPropertySimplePU("", this, "searchInputText");
         this.__sortMode = new ObservedPropertySimplePU(SORT_MODE.FREE_COUNT, this, "sortMode");
         this.__showSortMenu = new ObservedPropertySimplePU(false, this, "showSortMenu");
         this.__isLoading = new ObservedPropertySimplePU(true, this, "isLoading");
@@ -789,6 +802,7 @@ class ChargerMonitorUI extends ViewPU {
         this.__canRefresh = new ObservedPropertySimplePU(true, this, "canRefresh");
         this.__refreshCooldown = new ObservedPropertySimplePU(0, this, "refreshCooldown");
         this.__screenHeight = new ObservedPropertySimplePU(800, this, "screenHeight");
+        this.__screenWidth = new ObservedPropertySimplePU(400, this, "screenWidth");
         this.refreshInterval = -1;
         this.lastConfigHash = "";
         this.cooldownInterval = -1;
@@ -808,6 +822,9 @@ class ChargerMonitorUI extends ViewPU {
         }
         if (params.searchText !== undefined) {
             this.searchText = params.searchText;
+        }
+        if (params.searchInputText !== undefined) {
+            this.searchInputText = params.searchInputText;
         }
         if (params.sortMode !== undefined) {
             this.sortMode = params.sortMode;
@@ -830,6 +847,9 @@ class ChargerMonitorUI extends ViewPU {
         if (params.screenHeight !== undefined) {
             this.screenHeight = params.screenHeight;
         }
+        if (params.screenWidth !== undefined) {
+            this.screenWidth = params.screenWidth;
+        }
         if (params.refreshInterval !== undefined) {
             this.refreshInterval = params.refreshInterval;
         }
@@ -851,6 +871,7 @@ class ChargerMonitorUI extends ViewPU {
         this.__isExpanded.purgeDependencyOnElmtId(rmElmtId);
         this.__stations.purgeDependencyOnElmtId(rmElmtId);
         this.__searchText.purgeDependencyOnElmtId(rmElmtId);
+        this.__searchInputText.purgeDependencyOnElmtId(rmElmtId);
         this.__sortMode.purgeDependencyOnElmtId(rmElmtId);
         this.__showSortMenu.purgeDependencyOnElmtId(rmElmtId);
         this.__isLoading.purgeDependencyOnElmtId(rmElmtId);
@@ -858,6 +879,7 @@ class ChargerMonitorUI extends ViewPU {
         this.__canRefresh.purgeDependencyOnElmtId(rmElmtId);
         this.__refreshCooldown.purgeDependencyOnElmtId(rmElmtId);
         this.__screenHeight.purgeDependencyOnElmtId(rmElmtId);
+        this.__screenWidth.purgeDependencyOnElmtId(rmElmtId);
     }
     aboutToBeDeleted() {
         this.__stationConfig.aboutToBeDeleted();
@@ -867,6 +889,7 @@ class ChargerMonitorUI extends ViewPU {
         this.__isExpanded.aboutToBeDeleted();
         this.__stations.aboutToBeDeleted();
         this.__searchText.aboutToBeDeleted();
+        this.__searchInputText.aboutToBeDeleted();
         this.__sortMode.aboutToBeDeleted();
         this.__showSortMenu.aboutToBeDeleted();
         this.__isLoading.aboutToBeDeleted();
@@ -874,6 +897,7 @@ class ChargerMonitorUI extends ViewPU {
         this.__canRefresh.aboutToBeDeleted();
         this.__refreshCooldown.aboutToBeDeleted();
         this.__screenHeight.aboutToBeDeleted();
+        this.__screenWidth.aboutToBeDeleted();
         SubscriberManager.Get().delete(this.id__());
         this.aboutToBeDeletedInternal();
     }
@@ -932,12 +956,19 @@ class ChargerMonitorUI extends ViewPU {
     set stations(newValue: StationData[]) {
         this.__stations.set(newValue);
     }
-    private __searchText: ObservedPropertySimplePU<string>;
+    private __searchText: ObservedPropertySimplePU<string>; // 实际搜索值
     get searchText() {
         return this.__searchText.get();
     }
     set searchText(newValue: string) {
         this.__searchText.set(newValue);
+    }
+    private __searchInputText: ObservedPropertySimplePU<string>; // 输入框临时值
+    get searchInputText() {
+        return this.__searchInputText.get();
+    }
+    set searchInputText(newValue: string) {
+        this.__searchInputText.set(newValue);
     }
     private __sortMode: ObservedPropertySimplePU<number>;
     get sortMode() {
@@ -988,6 +1019,13 @@ class ChargerMonitorUI extends ViewPU {
     set screenHeight(newValue: number) {
         this.__screenHeight.set(newValue);
     }
+    private __screenWidth: ObservedPropertySimplePU<number>; // 默认屏幕宽度
+    get screenWidth() {
+        return this.__screenWidth.get();
+    }
+    set screenWidth(newValue: number) {
+        this.__screenWidth.set(newValue);
+    }
     private refreshInterval: number;
     private lastConfigHash: string; // 用于检测配置变化
     private cooldownInterval: number; // 冷却计时器
@@ -1000,29 +1038,24 @@ class ChargerMonitorUI extends ViewPU {
             this.fetchData();
         }, 30000);
     }
-    // 获取屏幕高度
+    // 获取屏幕尺寸
     getScreenHeight() {
         try {
             const defaultDisplay = display.getDefaultDisplaySync();
             this.screenHeight = defaultDisplay.height;
-            console.log('Screen height detected:', this.screenHeight);
+            this.screenWidth = defaultDisplay.width;
+            console.log('Screen size detected:', this.screenWidth, 'x', this.screenHeight);
         }
         catch (error) {
-            console.error('Failed to get screen height, using default:', error);
+            console.error('Failed to get screen size, using default:', error);
             this.screenHeight = 800; // 默认高度
+            this.screenWidth = 400; // 默认宽度
         }
     }
     // 计算自适应展开高度
     getExpandedHeight(): number {
-        // 计算可用高度：屏幕高度 - 顶部间距 - 底部安全区域
-        const topMargin = 20; // 顶部间距
-        const bottomSafeArea = 60; // 底部安全区域（包含底部导航栏）
-        const maxHeight = this.screenHeight - topMargin - bottomSafeArea;
-        // 限制最小和最大高度
-        const minHeight = 300; // 最小展开高度
-        const calculatedHeight = Math.max(minHeight, Math.min(maxHeight, 600)); // 最大不超过600
-        console.log('Calculated expanded height:', calculatedHeight);
-        return calculatedHeight;
+        // 已弃用固定高度计算，改用 layoutWeight 自适应
+        return 0;
     }
     aboutToDisappear() {
         // 清理所有定时器
@@ -1231,28 +1264,70 @@ class ChargerMonitorUI extends ViewPU {
         }
     }
     // 构建排序菜单项
+    // 构建排序菜单项
     buildSortMenuItem(text: string, mode: number, parent = null) {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            Text.create(text);
-            Text.fontSize(10);
-            Text.fontColor(this.sortMode === mode ? this.theme.accent : this.theme.textPrimary);
-            Text.backgroundColor(this.sortMode === mode ? this.theme.cardBackground : 'transparent');
-            Text.width('100%');
-            Text.height(24);
-            Text.textAlign(TextAlign.Start);
-            Text.padding({ left: 10 });
-            Text.onClick(() => {
+            Row.create();
+            Row.width('100%');
+            Row.height(44);
+            Row.padding({ left: 16, right: 16 });
+            Row.backgroundColor(this.sortMode === mode ? this.theme.overlay : 'transparent');
+            Row.borderRadius(8);
+            Row.onClick(() => {
                 this.sortMode = mode;
                 this.showSortMenu = false;
             });
+        }, Row);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Text.create(text);
+            Text.fontSize(14);
+            Text.fontColor(this.sortMode === mode ? this.theme.accent : this.theme.textPrimary);
+            Text.fontWeight(this.sortMode === mode ? FontWeight.Medium : FontWeight.Normal);
         }, Text);
         Text.pop();
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            If.create();
+            if (this.sortMode === mode) {
+                this.ifElseBranchUpdateFunction(0, () => {
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Blank.create();
+                    }, Blank);
+                    Blank.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create('✓');
+                        Text.fontSize(14);
+                        Text.fontColor(this.theme.accent);
+                    }, Text);
+                    Text.pop();
+                });
+            }
+            else {
+                this.ifElseBranchUpdateFunction(1, () => {
+                });
+            }
+        }, If);
+        If.pop();
+        Row.pop();
+    }
+    // 构建排序下拉菜单
+    SortMenuBuilder(parent = null) {
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Column.create();
+            Column.width(160);
+            Column.padding(4);
+        }, Column);
+        this.buildSortMenuItem.bind(this)('空闲插座数量', SORT_MODE.FREE_COUNT);
+        this.buildSortMenuItem.bind(this)('插座编号', SORT_MODE.SERIAL);
+        this.buildSortMenuItem.bind(this)('功率', SORT_MODE.POWER);
+        this.buildSortMenuItem.bind(this)('费用', SORT_MODE.FEE);
+        this.buildSortMenuItem.bind(this)('使用时长', SORT_MODE.DURATION);
+        Column.pop();
     }
     initialRender() {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create();
             Column.width('100%');
-            Column.height('100%');
+            Column.layoutWeight(1);
             Column.backgroundColor(this.theme.background);
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
@@ -1360,79 +1435,106 @@ class ChargerMonitorUI extends ViewPU {
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Column.create();
                         Column.width('100%');
+                        Column.layoutWeight(1);
                         Column.backgroundColor(this.theme.background);
                         Column.padding({ left: 10, right: 10 });
-                        Column.height(this.getExpandedHeight());
                     }, Column);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        TextInput.create({ placeholder: '搜索站点名称…', text: this.searchText });
-                        TextInput.onChange((value) => { this.searchText = value; });
+                        // 搜索框 - 统一样式，带搜索按钮
+                        Row.create();
+                        // 搜索框 - 统一样式，带搜索按钮
+                        Row.width('100%');
+                        // 搜索框 - 统一样式，带搜索按钮
+                        Row.margin({ top: 10, bottom: 10 });
+                    }, Row);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        TextInput.create({ placeholder: '搜索站点名称…', text: this.searchInputText });
+                        TextInput.onChange((value) => { this.searchInputText = value; });
+                        TextInput.layoutWeight(1);
                         TextInput.height(36);
-                        TextInput.backgroundColor(this.theme.overlay);
+                        TextInput.backgroundColor(this.theme.secondaryBackground);
                         TextInput.fontColor(this.theme.textPrimary);
-                        TextInput.margin({ top: 10, bottom: 10 });
+                        TextInput.placeholderColor(this.theme.textSecondary);
+                        TextInput.borderRadius(8);
+                        TextInput.padding({ left: 12, right: 12 });
                     }, TextInput);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        // 排序模式选择器 - 使用简化按钮组（节省空间）
+                        Button.createWithLabel('搜索');
+                        Button.fontSize(13);
+                        Button.fontColor('#ffffff');
+                        Button.backgroundColor(this.theme.accent);
+                        Button.borderRadius(8);
+                        Button.height(36);
+                        Button.margin({ left: 8 });
+                        Button.onClick(() => {
+                            this.searchText = this.searchInputText;
+                        });
+                    }, Button);
+                    Button.pop();
+                    // 搜索框 - 统一样式，带搜索按钮
+                    Row.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        // 排序模式选择器 - 使用 bindMenu 实现下拉菜单
                         Row.create();
-                        // 排序模式选择器 - 使用简化按钮组（节省空间）
+                        // 排序模式选择器 - 使用 bindMenu 实现下拉菜单
                         Row.width('100%');
-                        // 排序模式选择器 - 使用简化按钮组（节省空间）
+                        // 排序模式选择器 - 使用 bindMenu 实现下拉菜单
                         Row.justifyContent(FlexAlign.Start);
-                        // 排序模式选择器 - 使用简化按钮组（节省空间）
+                        // 排序模式选择器 - 使用 bindMenu 实现下拉菜单
                         Row.margin({ bottom: 10 });
                     }, Row);
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
                         Text.create("排序:");
                         Text.fontColor(this.theme.textSecondary);
-                        Text.fontSize(12);
-                        Text.margin({ right: 10 });
+                        Text.fontSize(13);
+                        Text.margin({ right: 8 });
                     }, Text);
                     Text.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        Button.createWithLabel(this.getSortModeText(this.sortMode));
-                        Button.onClick(() => {
+                        // 排序按钮 - 绑定下拉菜单
+                        Row.create();
+                        // 排序按钮 - 绑定下拉菜单
+                        Row.padding({ left: 12, right: 10, top: 8, bottom: 8 });
+                        // 排序按钮 - 绑定下拉菜单
+                        Row.backgroundColor(this.theme.tertiaryBackground);
+                        // 排序按钮 - 绑定下拉菜单
+                        Row.borderRadius(8);
+                        // 排序按钮 - 绑定下拉菜单
+                        Row.bindMenu(this.showSortMenu, { builder: () => {
+                                this.SortMenuBuilder.call(this);
+                            } }, {
+                            placement: Placement.BottomLeft,
+                            onDisappear: () => {
+                                this.showSortMenu = false;
+                            }
+                        });
+                        // 排序按钮 - 绑定下拉菜单
+                        Row.onClick(() => {
                             this.showSortMenu = !this.showSortMenu;
                         });
-                        Button.fontSize(10);
-                        Button.backgroundColor(this.theme.tertiaryBackground);
-                        Button.fontColor(this.theme.textPrimary);
-                        Button.width(80);
-                        Button.height(24);
-                        Button.borderRadius(4);
-                    }, Button);
-                    Button.pop();
-                    // 排序模式选择器 - 使用简化按钮组（节省空间）
+                    }, Row);
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create(this.getSortModeText(this.sortMode));
+                        Text.fontSize(13);
+                        Text.fontColor(this.theme.textPrimary);
+                        Text.maxLines(1);
+                        Text.textOverflow({ overflow: TextOverflow.Ellipsis });
+                    }, Text);
+                    Text.pop();
+                    this.observeComponentCreation2((elmtId, isInitialRender) => {
+                        Text.create('▼');
+                        Text.fontSize(10);
+                        Text.fontColor(this.theme.textSecondary);
+                        Text.margin({ left: 6 });
+                    }, Text);
+                    Text.pop();
+                    // 排序按钮 - 绑定下拉菜单
+                    Row.pop();
+                    // 排序模式选择器 - 使用 bindMenu 实现下拉菜单
                     Row.pop();
                     this.observeComponentCreation2((elmtId, isInitialRender) => {
-                        If.create();
-                        // 排序菜单
-                        if (this.showSortMenu) {
-                            this.ifElseBranchUpdateFunction(0, () => {
-                                this.observeComponentCreation2((elmtId, isInitialRender) => {
-                                    Column.create();
-                                    Column.backgroundColor(this.theme.secondaryBackground);
-                                    Column.borderRadius(4);
-                                    Column.width(100);
-                                    Column.margin({ bottom: 10 });
-                                }, Column);
-                                this.buildSortMenuItem.bind(this)('空闲插座数量', SORT_MODE.FREE_COUNT);
-                                this.buildSortMenuItem.bind(this)('插座编号', SORT_MODE.SERIAL);
-                                this.buildSortMenuItem.bind(this)('功率', SORT_MODE.POWER);
-                                this.buildSortMenuItem.bind(this)('费用', SORT_MODE.FEE);
-                                this.buildSortMenuItem.bind(this)('使用时长', SORT_MODE.DURATION);
-                                Column.pop();
-                            });
-                        }
-                        else {
-                            this.ifElseBranchUpdateFunction(1, () => {
-                            });
-                        }
-                    }, If);
-                    If.pop();
-                    this.observeComponentCreation2((elmtId, isInitialRender) => {
                         List.create({ space: 10 });
-                        List.height(this.getExpandedHeight() - 160);
+                        List.layoutWeight(1);
                         List.backgroundColor(this.theme.background);
                         List.padding({ left: 10, right: 10 });
                     }, List);
@@ -1629,6 +1731,7 @@ class StationPickerUI extends ViewPU {
         this.__themeMode = new SynchedPropertySimpleOneWayPU(params.themeMode, this, "themeMode");
         this.__allStations = new ObservedPropertyObjectPU([], this, "allStations");
         this.__searchText = new ObservedPropertySimplePU("", this, "searchText");
+        this.__searchInputText = new ObservedPropertySimplePU("", this, "searchInputText");
         this.__selectedIds = new ObservedPropertyObjectPU([], this, "selectedIds");
         this.__isLoading = new ObservedPropertySimplePU(false, this, "isLoading");
         this.__loadingMessage = new ObservedPropertySimplePU("正在加载站点列表…", this, "loadingMessage");
@@ -1656,6 +1759,9 @@ class StationPickerUI extends ViewPU {
         if (params.searchText !== undefined) {
             this.searchText = params.searchText;
         }
+        if (params.searchInputText !== undefined) {
+            this.searchInputText = params.searchInputText;
+        }
         if (params.selectedIds !== undefined) {
             this.selectedIds = params.selectedIds;
         }
@@ -1682,6 +1788,7 @@ class StationPickerUI extends ViewPU {
         this.__themeMode.purgeDependencyOnElmtId(rmElmtId);
         this.__allStations.purgeDependencyOnElmtId(rmElmtId);
         this.__searchText.purgeDependencyOnElmtId(rmElmtId);
+        this.__searchInputText.purgeDependencyOnElmtId(rmElmtId);
         this.__selectedIds.purgeDependencyOnElmtId(rmElmtId);
         this.__isLoading.purgeDependencyOnElmtId(rmElmtId);
         this.__loadingMessage.purgeDependencyOnElmtId(rmElmtId);
@@ -1693,6 +1800,7 @@ class StationPickerUI extends ViewPU {
         this.__themeMode.aboutToBeDeleted();
         this.__allStations.aboutToBeDeleted();
         this.__searchText.aboutToBeDeleted();
+        this.__searchInputText.aboutToBeDeleted();
         this.__selectedIds.aboutToBeDeleted();
         this.__isLoading.aboutToBeDeleted();
         this.__loadingMessage.aboutToBeDeleted();
@@ -1745,12 +1853,19 @@ class StationPickerUI extends ViewPU {
     set allStations(newValue: StationBrief[]) {
         this.__allStations.set(newValue);
     }
-    private __searchText: ObservedPropertySimplePU<string>;
+    private __searchText: ObservedPropertySimplePU<string>; // 实际搜索值
     get searchText() {
         return this.__searchText.get();
     }
     set searchText(newValue: string) {
         this.__searchText.set(newValue);
+    }
+    private __searchInputText: ObservedPropertySimplePU<string>; // 输入框临时值
+    get searchInputText() {
+        return this.__searchInputText.get();
+    }
+    set searchInputText(newValue: string) {
+        this.__searchInputText.set(newValue);
     }
     private __selectedIds: ObservedPropertyObjectPU<number[]>;
     get selectedIds() {
@@ -2008,23 +2123,39 @@ class StationPickerUI extends ViewPU {
         // 站点设置标题
         Text.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
-            // 搜索框
-            TextInput.create({ placeholder: '搜索站点名称…', text: this.searchText });
-            // 搜索框
-            TextInput.onChange((value) => { this.searchText = value; });
-            // 搜索框
-            TextInput.width('90%');
-            // 搜索框
-            TextInput.height(40);
-            // 搜索框
+            // 搜索框 - 统一样式，带搜索按钮
+            Row.create();
+            // 搜索框 - 统一样式，带搜索按钮
+            Row.width('90%');
+            // 搜索框 - 统一样式，带搜索按钮
+            Row.margin({ bottom: 8 });
+        }, Row);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            TextInput.create({ placeholder: '搜索站点名称…', text: this.searchInputText });
+            TextInput.onChange((value) => { this.searchInputText = value; });
+            TextInput.layoutWeight(1);
+            TextInput.height(36);
             TextInput.backgroundColor(this.theme.secondaryBackground);
-            // 搜索框
             TextInput.fontColor(this.theme.textPrimary);
-            // 搜索框
+            TextInput.placeholderColor(this.theme.textSecondary);
             TextInput.borderRadius(8);
-            // 搜索框
-            TextInput.margin({ bottom: 8 });
+            TextInput.padding({ left: 12, right: 12 });
         }, TextInput);
+        this.observeComponentCreation2((elmtId, isInitialRender) => {
+            Button.createWithLabel('搜索');
+            Button.fontSize(13);
+            Button.fontColor('#ffffff');
+            Button.backgroundColor(this.theme.accent);
+            Button.borderRadius(8);
+            Button.height(36);
+            Button.margin({ left: 8 });
+            Button.onClick(() => {
+                this.searchText = this.searchInputText;
+            });
+        }, Button);
+        Button.pop();
+        // 搜索框 - 统一样式，带搜索按钮
+        Row.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             If.create();
             // 位置状态提示
@@ -2332,19 +2463,27 @@ class MapViewerUI extends ViewPU {
         if (typeof paramsLambda === "function") {
             this.paramsGenerator_ = paramsLambda;
         }
+        this.__theme = new SynchedPropertyObjectOneWayPU(params.theme, this, "theme");
         this.__scaleValue = new ObservedPropertySimplePU(1.0, this, "scaleValue");
         this.__pinchValue = new ObservedPropertySimplePU(1.0, this, "pinchValue");
         this.__offsetX = new ObservedPropertySimplePU(0, this, "offsetX");
         this.__offsetY = new ObservedPropertySimplePU(0, this, "offsetY");
         this.__lastOffsetX = new ObservedPropertySimplePU(0, this, "lastOffsetX");
         this.__lastOffsetY = new ObservedPropertySimplePU(0, this, "lastOffsetY");
+        this.pinchCenterRatioX = 0.5;
+        this.pinchCenterRatioY = 0.5;
         this.minScale = 0.5;
         this.maxScale = 5.0;
         this.dragSensitivity = 2.5;
+        this.containerWidth = 0;
+        this.containerHeight = 0;
         this.setInitiallyProvidedValue(params);
         this.finalizeConstruction();
     }
     setInitiallyProvidedValue(params: MapViewerUI_Params) {
+        if (params.theme === undefined) {
+            this.__theme.set(ThemeManager.getDarkColors());
+        }
         if (params.scaleValue !== undefined) {
             this.scaleValue = params.scaleValue;
         }
@@ -2363,6 +2502,12 @@ class MapViewerUI extends ViewPU {
         if (params.lastOffsetY !== undefined) {
             this.lastOffsetY = params.lastOffsetY;
         }
+        if (params.pinchCenterRatioX !== undefined) {
+            this.pinchCenterRatioX = params.pinchCenterRatioX;
+        }
+        if (params.pinchCenterRatioY !== undefined) {
+            this.pinchCenterRatioY = params.pinchCenterRatioY;
+        }
         if (params.minScale !== undefined) {
             this.minScale = params.minScale;
         }
@@ -2372,10 +2517,18 @@ class MapViewerUI extends ViewPU {
         if (params.dragSensitivity !== undefined) {
             this.dragSensitivity = params.dragSensitivity;
         }
+        if (params.containerWidth !== undefined) {
+            this.containerWidth = params.containerWidth;
+        }
+        if (params.containerHeight !== undefined) {
+            this.containerHeight = params.containerHeight;
+        }
     }
     updateStateVars(params: MapViewerUI_Params) {
+        this.__theme.reset(params.theme);
     }
     purgeVariableDependenciesOnElmtId(rmElmtId) {
+        this.__theme.purgeDependencyOnElmtId(rmElmtId);
         this.__scaleValue.purgeDependencyOnElmtId(rmElmtId);
         this.__pinchValue.purgeDependencyOnElmtId(rmElmtId);
         this.__offsetX.purgeDependencyOnElmtId(rmElmtId);
@@ -2384,6 +2537,7 @@ class MapViewerUI extends ViewPU {
         this.__lastOffsetY.purgeDependencyOnElmtId(rmElmtId);
     }
     aboutToBeDeleted() {
+        this.__theme.aboutToBeDeleted();
         this.__scaleValue.aboutToBeDeleted();
         this.__pinchValue.aboutToBeDeleted();
         this.__offsetX.aboutToBeDeleted();
@@ -2392,6 +2546,13 @@ class MapViewerUI extends ViewPU {
         this.__lastOffsetY.aboutToBeDeleted();
         SubscriberManager.Get().delete(this.id__());
         this.aboutToBeDeletedInternal();
+    }
+    private __theme: SynchedPropertySimpleOneWayPU<ThemeColors>; // 主题颜色
+    get theme() {
+        return this.__theme.get();
+    }
+    set theme(newValue: ThemeColors) {
+        this.__theme.set(newValue);
     }
     // 缩放比例
     private __scaleValue: ObservedPropertySimplePU<number>;
@@ -2441,18 +2602,24 @@ class MapViewerUI extends ViewPU {
     set lastOffsetY(newValue: number) {
         this.__lastOffsetY.set(newValue);
     }
+    // 缩放中心相对于图片的百分比位置
+    private pinchCenterRatioX: number;
+    private pinchCenterRatioY: number;
     // 最小缩放比例
     private minScale: number;
     // 最大缩放比例
     private maxScale: number;
     // 拖动灵敏度系数
     private dragSensitivity: number;
+    // 容器尺寸（用于计算缩放中心）
+    private containerWidth: number;
+    private containerHeight: number;
     initialRender() {
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Column.create();
             Column.width('100%');
             Column.height('100%');
-            Column.backgroundColor('#1a1a1c');
+            Column.backgroundColor(this.theme.background);
         }, Column);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             // 提示信息和重置按钮
@@ -2464,7 +2631,7 @@ class MapViewerUI extends ViewPU {
         }, Row);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Text.create("双指缩放 | 单指拖动");
-            Text.fontColor('#888888');
+            Text.fontColor(this.theme.textSecondary);
             Text.fontSize(12);
         }, Text);
         Text.pop();
@@ -2474,7 +2641,7 @@ class MapViewerUI extends ViewPU {
         Blank.pop();
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Text.create(`缩放: ${(this.scaleValue * 100).toFixed(0)}%`);
-            Text.fontColor('#888888');
+            Text.fontColor(this.theme.textSecondary);
             Text.fontSize(12);
             Text.margin({ right: 15 });
         }, Text);
@@ -2489,7 +2656,9 @@ class MapViewerUI extends ViewPU {
             // 重置按钮
             Button.padding({ left: 10, right: 10 });
             // 重置按钮
-            Button.backgroundColor('#48484a');
+            Button.backgroundColor(this.theme.tertiaryBackground);
+            // 重置按钮
+            Button.fontColor(this.theme.textPrimary);
             // 重置按钮
             Button.onClick(() => {
                 this.resetView();
@@ -2508,6 +2677,12 @@ class MapViewerUI extends ViewPU {
             Stack.layoutWeight(1);
             // 地图显示区域
             Stack.clip(true);
+            // 地图显示区域
+            Stack.onAreaChange((oldValue: Area, newValue: Area) => {
+                // 更新容器尺寸
+                this.containerWidth = Number(newValue.width);
+                this.containerHeight = Number(newValue.height);
+            });
         }, Stack);
         this.observeComponentCreation2((elmtId, isInitialRender) => {
             Image.create({ "id": 16777229, "type": 20000, params: [], "bundleName": "com.example.uestc_charger_monitor", "moduleName": "entry" });
@@ -2521,17 +2696,20 @@ class MapViewerUI extends ViewPU {
             // 双指缩放手势
             PinchGesture.create({ fingers: 2 });
             // 双指缩放手势
-            PinchGesture.onActionStart(() => {
+            PinchGesture.onActionStart((event: GestureEvent) => {
                 this.pinchValue = this.scaleValue;
+                // 计算缩放中心相对于图片的百分比位置
+                this.calculatePinchCenterRatio(event.pinchCenterX, event.pinchCenterY);
             });
             // 双指缩放手势
             PinchGesture.onActionUpdate((event: GestureEvent) => {
+                const oldScale = this.scaleValue;
                 let newScale = this.pinchValue * event.scale;
                 // 限制缩放范围
                 newScale = Math.max(this.minScale, Math.min(this.maxScale, newScale));
                 this.scaleValue = newScale;
-                // 缩放时调整偏移量
-                this.adjustOffsetOnScale();
+                // 以双指中点为中心调整偏移量
+                this.adjustOffsetOnPinchScale(oldScale, newScale);
             });
             // 双指缩放手势
             PinchGesture.onActionEnd(() => {
@@ -2571,6 +2749,56 @@ class MapViewerUI extends ViewPU {
         Stack.pop();
         Column.pop();
     }
+    // 计算缩放中心相对于图片的百分比位置
+    private calculatePinchCenterRatio(centerX: number, centerY: number) {
+        // 图片当前显示尺寸
+        const displayWidth = this.containerWidth * this.scaleValue;
+        const displayHeight = this.containerHeight * this.scaleValue;
+        // 图片左上角位置（居中显示 + 偏移）
+        const imgLeft = (this.containerWidth - displayWidth) / 2 + this.offsetX;
+        const imgTop = (this.containerHeight - displayHeight) / 2 + this.offsetY;
+        // 计算百分比位置
+        this.pinchCenterRatioX = (centerX - imgLeft) / displayWidth;
+        this.pinchCenterRatioY = (centerY - imgTop) / displayHeight;
+        // 限制在 0-1 范围内
+        this.pinchCenterRatioX = Math.max(0, Math.min(1, this.pinchCenterRatioX));
+        this.pinchCenterRatioY = Math.max(0, Math.min(1, this.pinchCenterRatioY));
+    }
+    // 以双指中点为中心调整偏移量
+    private adjustOffsetOnPinchScale(oldScale: number, newScale: number) {
+        if (newScale <= 1.0) {
+            // 缩放到小于等于1时，重置偏移
+            this.offsetX = 0;
+            this.offsetY = 0;
+            return;
+        }
+        // 计算缩放前后图片尺寸变化
+        const oldDisplayWidth = this.containerWidth * oldScale;
+        const oldDisplayHeight = this.containerHeight * oldScale;
+        const newDisplayWidth = this.containerWidth * newScale;
+        const newDisplayHeight = this.containerHeight * newScale;
+        // 缩放中心在旧图片中的位置
+        const centerInOldImgX = oldDisplayWidth * this.pinchCenterRatioX;
+        const centerInOldImgY = oldDisplayHeight * this.pinchCenterRatioY;
+        // 缩放中心在新图片中的位置
+        const centerInNewImgX = newDisplayWidth * this.pinchCenterRatioX;
+        const centerInNewImgY = newDisplayHeight * this.pinchCenterRatioY;
+        // 计算新的偏移量，使缩放中心点位置保持不变
+        // 旧图片左上角位置
+        const oldImgLeft = (this.containerWidth - oldDisplayWidth) / 2 + this.offsetX;
+        const oldImgTop = (this.containerHeight - oldDisplayHeight) / 2 + this.offsetY;
+        // 缩放中心在屏幕上的位置
+        const centerScreenX = oldImgLeft + centerInOldImgX;
+        const centerScreenY = oldImgTop + centerInOldImgY;
+        // 新图片左上角位置（使缩放中心保持不变）
+        const newImgLeft = centerScreenX - centerInNewImgX;
+        const newImgTop = centerScreenY - centerInNewImgY;
+        // 计算新偏移量
+        this.offsetX = newImgLeft - (this.containerWidth - newDisplayWidth) / 2;
+        this.offsetY = newImgTop - (this.containerHeight - newDisplayHeight) / 2;
+        // 限制偏移范围
+        this.clampOffset();
+    }
     // 重置视图
     private resetView() {
         Context.animateTo({ duration: 300, curve: Curve.EaseOut }, () => {
@@ -2581,14 +2809,6 @@ class MapViewerUI extends ViewPU {
             this.lastOffsetX = 0;
             this.lastOffsetY = 0;
         });
-    }
-    // 缩放时调整偏移量
-    private adjustOffsetOnScale() {
-        // 简单处理：缩放时重置偏移
-        if (this.scaleValue <= 1.0) {
-            this.offsetX = 0;
-            this.offsetY = 0;
-        }
     }
     // 限制偏移范围
     private clampOffset() {

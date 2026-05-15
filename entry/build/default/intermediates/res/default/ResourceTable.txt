@@ -6,6 +6,7 @@ string module_desc 0x01000007
 color start_window_background 0x01000008
 float page_text_font_size 0x01000009
 media background 0x01000001
+media charger_icon 0x0100000e
 media foreground 0x01000002
 media layered_image 0x01000003
 media map 0x0100000d

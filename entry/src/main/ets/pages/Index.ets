@@ -325,7 +325,7 @@ struct MainApp {
         }.tabBar("监控")
 
         TabContent() {
-          MapViewerUI()
+          MapViewerUI({ theme: this.theme })
         }.tabBar("地图")
 
         TabContent() {
@@ -395,7 +395,7 @@ struct MainApp {
         .translate({ x: -150, y: -100 })
       }
     }
-    .width('100%').height('100%').backgroundColor(this.theme.background)
+    .width('100%').layoutWeight(1).backgroundColor(this.theme.background)
   }
 }
 
@@ -424,7 +424,8 @@ struct ChargerMonitorUI {
 
   @State isExpanded: boolean = false;
   @State stations: StationData[] = [];
-  @State searchText: string = "";
+  @State searchText: string = "";          // 实际搜索值
+  @State searchInputText: string = "";     // 输入框临时值
   @State sortMode: number = SORT_MODE.FREE_COUNT;
   @State showSortMenu: boolean = false;
   @State isLoading: boolean = true;
@@ -432,6 +433,7 @@ struct ChargerMonitorUI {
   @State canRefresh: boolean = true; // 是否可以刷新
   @State refreshCooldown: number = 0; // 刷新冷却时间
   @State screenHeight: number = 800; // 默认屏幕高度
+  @State screenWidth: number = 400; // 默认屏幕宽度
 
   private refreshInterval: number = -1;
   private lastConfigHash: string = ""; // 用于检测配置变化
@@ -447,31 +449,24 @@ struct ChargerMonitorUI {
     }, 30000);
   }
 
-  // 获取屏幕高度
+  // 获取屏幕尺寸
   getScreenHeight() {
     try {
       const defaultDisplay = display.getDefaultDisplaySync();
       this.screenHeight = defaultDisplay.height;
-      console.log('Screen height detected:', this.screenHeight);
+      this.screenWidth = defaultDisplay.width;
+      console.log('Screen size detected:', this.screenWidth, 'x', this.screenHeight);
     } catch (error) {
-      console.error('Failed to get screen height, using default:', error);
+      console.error('Failed to get screen size, using default:', error);
       this.screenHeight = 800; // 默认高度
+      this.screenWidth = 400; // 默认宽度
     }
   }
 
   // 计算自适应展开高度
   getExpandedHeight(): number {
-    // 计算可用高度：屏幕高度 - 顶部间距 - 底部安全区域
-    const topMargin = 20; // 顶部间距
-    const bottomSafeArea = 60; // 底部安全区域（包含底部导航栏）
-    const maxHeight = this.screenHeight - topMargin - bottomSafeArea;
-
-    // 限制最小和最大高度
-    const minHeight = 300; // 最小展开高度
-    const calculatedHeight = Math.max(minHeight, Math.min(maxHeight, 600)); // 最大不超过600
-
-    console.log('Calculated expanded height:', calculatedHeight);
-    return calculatedHeight;
+    // 已弃用固定高度计算，改用 layoutWeight 自适应
+    return 0;
   }
 
   aboutToDisappear() {
@@ -696,20 +691,45 @@ struct ChargerMonitorUI {
 
 
   // 构建排序菜单项
+  // 构建排序菜单项
   @Builder
   buildSortMenuItem(text: string, mode: number) {
-    Text(text)
-      .fontSize(10)
-      .fontColor(this.sortMode === mode ? this.theme.accent : this.theme.textPrimary)
-      .backgroundColor(this.sortMode === mode ? this.theme.cardBackground : 'transparent')
-      .width('100%')
-      .height(24)
-      .textAlign(TextAlign.Start)
-      .padding({ left: 10 })
-      .onClick(() => {
-        this.sortMode = mode;
-        this.showSortMenu = false;
-      })
+    Row() {
+      Text(text)
+        .fontSize(14)
+        .fontColor(this.sortMode === mode ? this.theme.accent : this.theme.textPrimary)
+        .fontWeight(this.sortMode === mode ? FontWeight.Medium : FontWeight.Normal)
+      
+      if (this.sortMode === mode) {
+        Blank()
+        Text('✓')
+          .fontSize(14)
+          .fontColor(this.theme.accent)
+      }
+    }
+    .width('100%')
+    .height(44)
+    .padding({ left: 16, right: 16 })
+    .backgroundColor(this.sortMode === mode ? this.theme.overlay : 'transparent')
+    .borderRadius(8)
+    .onClick(() => {
+      this.sortMode = mode;
+      this.showSortMenu = false;
+    })
+  }
+
+  // 构建排序下拉菜单
+  @Builder
+  SortMenuBuilder() {
+    Column() {
+      this.buildSortMenuItem('空闲插座数量', SORT_MODE.FREE_COUNT)
+      this.buildSortMenuItem('插座编号', SORT_MODE.SERIAL)
+      this.buildSortMenuItem('功率', SORT_MODE.POWER)
+      this.buildSortMenuItem('费用', SORT_MODE.FEE)
+      this.buildSortMenuItem('使用时长', SORT_MODE.DURATION)
+    }
+    .width(160)
+    .padding(4)
   }
 
   build() {
@@ -758,45 +778,67 @@ struct ChargerMonitorUI {
         // 展开面板
         if (this.isExpanded) {
           Column() {
-            TextInput({ placeholder: '搜索站点名称…', text: this.searchText })
-              .onChange((value) => { this.searchText = value; })
-              .height(36)
-              .backgroundColor(this.theme.overlay)
-              .fontColor(this.theme.textPrimary)
-              .margin({ top: 10, bottom: 10 })
-
-            // 排序模式选择器 - 使用简化按钮组（节省空间）
+            // 搜索框 - 统一样式，带搜索按钮
             Row() {
-              Text("排序:").fontColor(this.theme.textSecondary).fontSize(12).margin({ right: 10 })
-              Button(this.getSortModeText(this.sortMode))
-                .onClick(() => {
-                  this.showSortMenu = !this.showSortMenu;
-                })
-                .fontSize(10)
-                .backgroundColor(this.theme.tertiaryBackground)
+              TextInput({ placeholder: '搜索站点名称…', text: this.searchInputText })
+                .onChange((value) => { this.searchInputText = value; })
+                .layoutWeight(1)
+                .height(36)
+                .backgroundColor(this.theme.secondaryBackground)
                 .fontColor(this.theme.textPrimary)
-                .width(80)
-                .height(24)
-                .borderRadius(4)
+                .placeholderColor(this.theme.textSecondary)
+                .borderRadius(8)
+                .padding({ left: 12, right: 12 })
+              
+              Button('搜索')
+                .fontSize(13)
+                .fontColor('#ffffff')
+                .backgroundColor(this.theme.accent)
+                .borderRadius(8)
+                .height(36)
+                .margin({ left: 8 })
+                .onClick(() => {
+                  this.searchText = this.searchInputText;
+                })
+            }
+            .width('100%')
+            .margin({ top: 10, bottom: 10 })
+
+            // 排序模式选择器 - 使用 bindMenu 实现下拉菜单
+            Row() {
+              Text("排序:")
+                .fontColor(this.theme.textSecondary)
+                .fontSize(13)
+                .margin({ right: 8 })
+              
+              // 排序按钮 - 绑定下拉菜单
+              Row() {
+                Text(this.getSortModeText(this.sortMode))
+                  .fontSize(13)
+                  .fontColor(this.theme.textPrimary)
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+                Text('▼')
+                  .fontSize(10)
+                  .fontColor(this.theme.textSecondary)
+                  .margin({ left: 6 })
+              }
+              .padding({ left: 12, right: 10, top: 8, bottom: 8 })
+              .backgroundColor(this.theme.tertiaryBackground)
+              .borderRadius(8)
+              .bindMenu(this.showSortMenu, this.SortMenuBuilder(), {
+                placement: Placement.BottomLeft,
+                onDisappear: () => {
+                  this.showSortMenu = false;
+                }
+              })
+              .onClick(() => {
+                this.showSortMenu = !this.showSortMenu;
+              })
             }
             .width('100%')
             .justifyContent(FlexAlign.Start)
             .margin({ bottom: 10 })
-
-            // 排序菜单
-            if (this.showSortMenu) {
-              Column() {
-                this.buildSortMenuItem('空闲插座数量', SORT_MODE.FREE_COUNT)
-                this.buildSortMenuItem('插座编号', SORT_MODE.SERIAL)
-                this.buildSortMenuItem('功率', SORT_MODE.POWER)
-                this.buildSortMenuItem('费用', SORT_MODE.FEE)
-                this.buildSortMenuItem('使用时长', SORT_MODE.DURATION)
-              }
-              .backgroundColor(this.theme.secondaryBackground)
-              .borderRadius(4)
-              .width(100)
-              .margin({ bottom: 10 })
-            }
 
             List({ space: 10 }) {
               ForEach(this.getFilteredStations(), (item: StationWithFreeCount, index: number) => {
@@ -837,14 +879,14 @@ struct ChargerMonitorUI {
                 }
               })
             }
-            .height(this.getExpandedHeight() - 160) // 减去搜索框和排序控件的高度
+            .layoutWeight(1) // 自动填充剩余空间，支持滑动
             .backgroundColor(this.theme.background)
             .padding({ left: 10, right: 10 })
           }
           .width('100%')
+          .layoutWeight(1) // 展开面板填充剩余空间，铺满到底部导航栏
           .backgroundColor(this.theme.background)
           .padding({ left: 10, right: 10 })
-          .height(this.getExpandedHeight())
         }
       }
       .width('100%')
@@ -852,7 +894,7 @@ struct ChargerMonitorUI {
       .borderRadius(12)
       .margin({ top: 10 })
     }
-    .width('100%').height('100%').backgroundColor(this.theme.background)
+    .width('100%').layoutWeight(1).backgroundColor(this.theme.background)
   }
 }
 
@@ -883,7 +925,8 @@ struct StationPickerUI {
   @Prop themeMode: ThemeMode = ThemeMode.SYSTEM;
 
   @State allStations: StationBrief[] = [];
-  @State searchText: string = "";
+  @State searchText: string = "";          // 实际搜索值
+  @State searchInputText: string = "";     // 输入框临时值
   @State selectedIds: number[] = [];
   @State isLoading: boolean = false;
   @State loadingMessage: string = "正在加载站点列表…";
@@ -1101,15 +1144,31 @@ struct StationPickerUI {
         .width('90%')
         .margin({ bottom: 8 })
 
-      // 搜索框
-      TextInput({ placeholder: '搜索站点名称…', text: this.searchText })
-        .onChange((value) => { this.searchText = value; })
-        .width('90%')
-        .height(40)
-        .backgroundColor(this.theme.secondaryBackground)
-        .fontColor(this.theme.textPrimary)
-        .borderRadius(8)
-        .margin({ bottom: 8 })
+      // 搜索框 - 统一样式，带搜索按钮
+      Row() {
+        TextInput({ placeholder: '搜索站点名称…', text: this.searchInputText })
+          .onChange((value) => { this.searchInputText = value; })
+          .layoutWeight(1)
+          .height(36)
+          .backgroundColor(this.theme.secondaryBackground)
+          .fontColor(this.theme.textPrimary)
+          .placeholderColor(this.theme.textSecondary)
+          .borderRadius(8)
+          .padding({ left: 12, right: 12 })
+        
+        Button('搜索')
+          .fontSize(13)
+          .fontColor('#ffffff')
+          .backgroundColor(this.theme.accent)
+          .borderRadius(8)
+          .height(36)
+          .margin({ left: 8 })
+          .onClick(() => {
+            this.searchText = this.searchInputText;
+          })
+      }
+      .width('90%')
+      .margin({ bottom: 8 })
 
       // 位置状态提示
       if (this.locationStatus) {
@@ -1260,6 +1319,7 @@ struct StationPickerUI {
 // ==========================================
 @Component
 struct MapViewerUI {
+  @Prop theme: ThemeColors = ThemeManager.getDarkColors(); // 主题颜色
   // 缩放比例
   @State scaleValue: number = 1.0;
   // 上次缩放值（用于双指缩放计算）
@@ -1272,23 +1332,29 @@ struct MapViewerUI {
   @State lastOffsetX: number = 0;
   // 上次Y偏移（用于单指移动计算）
   @State lastOffsetY: number = 0;
+  // 缩放中心相对于图片的百分比位置
+  private pinchCenterRatioX: number = 0.5;
+  private pinchCenterRatioY: number = 0.5;
   // 最小缩放比例
   private minScale: number = 0.5;
   // 最大缩放比例
   private maxScale: number = 5.0;
   // 拖动灵敏度系数
   private dragSensitivity: number = 2.5;
+  // 容器尺寸（用于计算缩放中心）
+  private containerWidth: number = 0;
+  private containerHeight: number = 0;
 
   build() {
     Column() {
       // 提示信息和重置按钮
       Row() {
         Text("双指缩放 | 单指拖动")
-          .fontColor('#888888')
+          .fontColor(this.theme.textSecondary)
           .fontSize(12)
         Blank()
         Text(`缩放: ${(this.scaleValue * 100).toFixed(0)}%`)
-          .fontColor('#888888')
+          .fontColor(this.theme.textSecondary)
           .fontSize(12)
           .margin({ right: 15 })
         // 重置按钮
@@ -1296,7 +1362,8 @@ struct MapViewerUI {
           .fontSize(12)
           .height(28)
           .padding({ left: 10, right: 10 })
-          .backgroundColor('#48484a')
+          .backgroundColor(this.theme.tertiaryBackground)
+          .fontColor(this.theme.textPrimary)
           .onClick(() => {
             this.resetView();
           })
@@ -1316,16 +1383,19 @@ struct MapViewerUI {
             GestureGroup(GestureMode.Parallel,
               // 双指缩放手势
               PinchGesture({ fingers: 2 })
-                .onActionStart(() => {
+                .onActionStart((event: GestureEvent) => {
                   this.pinchValue = this.scaleValue;
+                  // 计算缩放中心相对于图片的百分比位置
+                  this.calculatePinchCenterRatio(event.pinchCenterX, event.pinchCenterY);
                 })
                 .onActionUpdate((event: GestureEvent) => {
+                  const oldScale = this.scaleValue;
                   let newScale = this.pinchValue * event.scale;
                   // 限制缩放范围
                   newScale = Math.max(this.minScale, Math.min(this.maxScale, newScale));
                   this.scaleValue = newScale;
-                  // 缩放时调整偏移量
-                  this.adjustOffsetOnScale();
+                  // 以双指中点为中心调整偏移量
+                  this.adjustOffsetOnPinchScale(oldScale, newScale);
                 })
                 .onActionEnd(() => {
                   this.pinchValue = this.scaleValue;
@@ -1356,10 +1426,67 @@ struct MapViewerUI {
       .width('100%')
       .layoutWeight(1)
       .clip(true)
+      .onAreaChange((oldValue: Area, newValue: Area) => {
+        // 更新容器尺寸
+        this.containerWidth = Number(newValue.width);
+        this.containerHeight = Number(newValue.height);
+      })
     }
     .width('100%')
     .height('100%')
-    .backgroundColor('#1a1a1c')
+    .backgroundColor(this.theme.background)
+  }
+
+  // 计算缩放中心相对于图片的百分比位置
+  private calculatePinchCenterRatio(centerX: number, centerY: number) {
+    // 图片当前显示尺寸
+    const displayWidth = this.containerWidth * this.scaleValue;
+    const displayHeight = this.containerHeight * this.scaleValue;
+    // 图片左上角位置（居中显示 + 偏移）
+    const imgLeft = (this.containerWidth - displayWidth) / 2 + this.offsetX;
+    const imgTop = (this.containerHeight - displayHeight) / 2 + this.offsetY;
+    // 计算百分比位置
+    this.pinchCenterRatioX = (centerX - imgLeft) / displayWidth;
+    this.pinchCenterRatioY = (centerY - imgTop) / displayHeight;
+    // 限制在 0-1 范围内
+    this.pinchCenterRatioX = Math.max(0, Math.min(1, this.pinchCenterRatioX));
+    this.pinchCenterRatioY = Math.max(0, Math.min(1, this.pinchCenterRatioY));
+  }
+
+  // 以双指中点为中心调整偏移量
+  private adjustOffsetOnPinchScale(oldScale: number, newScale: number) {
+    if (newScale <= 1.0) {
+      // 缩放到小于等于1时，重置偏移
+      this.offsetX = 0;
+      this.offsetY = 0;
+      return;
+    }
+    // 计算缩放前后图片尺寸变化
+    const oldDisplayWidth = this.containerWidth * oldScale;
+    const oldDisplayHeight = this.containerHeight * oldScale;
+    const newDisplayWidth = this.containerWidth * newScale;
+    const newDisplayHeight = this.containerHeight * newScale;
+    // 缩放中心在旧图片中的位置
+    const centerInOldImgX = oldDisplayWidth * this.pinchCenterRatioX;
+    const centerInOldImgY = oldDisplayHeight * this.pinchCenterRatioY;
+    // 缩放中心在新图片中的位置
+    const centerInNewImgX = newDisplayWidth * this.pinchCenterRatioX;
+    const centerInNewImgY = newDisplayHeight * this.pinchCenterRatioY;
+    // 计算新的偏移量，使缩放中心点位置保持不变
+    // 旧图片左上角位置
+    const oldImgLeft = (this.containerWidth - oldDisplayWidth) / 2 + this.offsetX;
+    const oldImgTop = (this.containerHeight - oldDisplayHeight) / 2 + this.offsetY;
+    // 缩放中心在屏幕上的位置
+    const centerScreenX = oldImgLeft + centerInOldImgX;
+    const centerScreenY = oldImgTop + centerInOldImgY;
+    // 新图片左上角位置（使缩放中心保持不变）
+    const newImgLeft = centerScreenX - centerInNewImgX;
+    const newImgTop = centerScreenY - centerInNewImgY;
+    // 计算新偏移量
+    this.offsetX = newImgLeft - (this.containerWidth - newDisplayWidth) / 2;
+    this.offsetY = newImgTop - (this.containerHeight - newDisplayHeight) / 2;
+    // 限制偏移范围
+    this.clampOffset();
   }
 
   // 重置视图
@@ -1372,15 +1499,6 @@ struct MapViewerUI {
       this.lastOffsetX = 0;
       this.lastOffsetY = 0;
     });
-  }
-
-  // 缩放时调整偏移量
-  private adjustOffsetOnScale() {
-    // 简单处理：缩放时重置偏移
-    if (this.scaleValue <= 1.0) {
-      this.offsetX = 0;
-      this.offsetY = 0;
-    }
   }
 
   // 限制偏移范围
