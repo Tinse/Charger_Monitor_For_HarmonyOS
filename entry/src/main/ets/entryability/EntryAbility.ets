@@ -2,19 +2,20 @@ import { AbilityConstant, ConfigurationConstant, UIAbility, Want, abilityAccessC
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { AppStateKeys } from '../pages/AppState';
+import { LOCATION_PERMISSIONS } from '../pages/services/LocationService';
 
 const DOMAIN = 0x0000;
 
-// 定位权限列表
-const LOCATION_PERMISSIONS: Array<Permissions> = [
-  'ohos.permission.LOCATION' as Permissions,
-  'ohos.permission.APPROXIMATELY_LOCATION' as Permissions
-];
+// 系统主题状态的 AppStorage key (使用 AppStateKeys)
+export const APP_STORAGE_KEY_SYSTEM_DARK_MODE = AppStateKeys.SYSTEM_DARK_MODE;
 
-// 系统主题状态的 AppStorage key
-export const APP_STORAGE_KEY_SYSTEM_DARK_MODE = 'systemDarkMode';
+// 窗口实例存储 key
+const APP_STORAGE_KEY_WINDOW = 'app.window';
 
 export default class EntryAbility extends UIAbility {
+  private windowStage: window.WindowStage | null = null;
+
   async onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): Promise<void> {
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
@@ -54,6 +55,8 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'testTag', 'Configuration updated, colorMode: %{public}d', newConfig.colorMode);
     // 使用 newConfig.colorMode 更新系统深色模式状态
     this.updateSystemDarkMode(newConfig.colorMode);
+    // 更新状态栏颜色
+    this.updateStatusBarStyle(newConfig.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
   }
 
   onDestroy(): void {
@@ -64,6 +67,12 @@ export default class EntryAbility extends UIAbility {
     // 主窗口被创建，设置主页面
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
 
+    // 保存 windowStage 引用
+    this.windowStage = windowStage;
+
+    // 设置沉浸式布局
+    this.setupImmersiveLayout(windowStage);
+
     windowStage.loadContent('pages/Index', (err) => {
       if (err) {
         const error = err as BusinessError;
@@ -73,9 +82,74 @@ export default class EntryAbility extends UIAbility {
     });
   }
 
+  // 设置沉浸式布局
+  private setupImmersiveLayout(windowStage: window.WindowStage): void {
+    try {
+      // 获取主窗口
+      windowStage.getMainWindow((err: BusinessError, win: window.Window) => {
+        if (err.code) {
+          hilog.error(DOMAIN, 'testTag', 'Failed to get main window. Cause: %{public}s', err.message);
+          return;
+        }
+
+        // 保存窗口实例到 AppStorage，供页面使用
+        AppStorage.setOrCreate<window.Window>(APP_STORAGE_KEY_WINDOW, win);
+
+        // 不使用全屏布局，让布局自动避让状态栏
+        win.setWindowLayoutFullScreen(false).then(() => {
+          hilog.info(DOMAIN, 'testTag', 'Window layout set to non-full screen');
+
+          // 设置状态栏可见
+          win.setWindowSystemBarEnable(['status']).then(() => {
+            hilog.info(DOMAIN, 'testTag', 'System bar configured');
+
+            // 根据当前主题设置状态栏样式
+            const isDark = AppStorage.get<boolean>(APP_STORAGE_KEY_SYSTEM_DARK_MODE) ?? true;
+            this.updateStatusBarProperties(win, isDark);
+          });
+        });
+      });
+    } catch (err) {
+      const error = err as BusinessError;
+      hilog.error(DOMAIN, 'testTag', 'Failed to setup immersive layout. Cause: %{public}s', error.message);
+    }
+  }
+
+  // 更新状态栏样式（根据深色模式）
+  private updateStatusBarStyle(isDark: boolean): void {
+    try {
+      const win = AppStorage.get<window.Window>(APP_STORAGE_KEY_WINDOW);
+      if (win) {
+        this.updateStatusBarProperties(win, isDark);
+      }
+    } catch (err) {
+      const error = err as BusinessError;
+      hilog.error(DOMAIN, 'testTag', 'Failed to update status bar style. Cause: %{public}s', error.message);
+    }
+  }
+
+  // 更新状态栏属性
+  private updateStatusBarProperties(win: window.Window, isDark: boolean): void {
+    try {
+      const properties: window.SystemBarProperties = {
+        statusBarColor: '#00000000', // 透明背景
+        // 深色模式用白色图标，浅色模式用黑色图标
+        isStatusBarLightIcon: isDark
+      };
+
+      win.setWindowSystemBarProperties(properties).then(() => {
+        hilog.info(DOMAIN, 'testTag', 'Status bar properties updated, isDark: %{public}s', isDark.toString());
+      });
+    } catch (err) {
+      const error = err as BusinessError;
+      hilog.error(DOMAIN, 'testTag', 'Failed to set status bar properties. Cause: %{public}s', error.message);
+    }
+  }
+
   onWindowStageDestroy(): void {
     // 主窗口被销毁，释放UI相关资源
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
+    this.windowStage = null;
   }
 
   onForeground(): void {
@@ -83,6 +157,9 @@ export default class EntryAbility extends UIAbility {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
     // 更新系统深色模式状态（确保从后台回到前台时同步）
     this.updateSystemDarkMode();
+    // 更新状态栏样式
+    const isDark = AppStorage.get<boolean>(APP_STORAGE_KEY_SYSTEM_DARK_MODE) ?? true;
+    this.updateStatusBarStyle(isDark);
   }
 
   onBackground(): void {

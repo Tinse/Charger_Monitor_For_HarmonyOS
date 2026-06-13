@@ -1,0 +1,23 @@
+# Build outputs
+.hvigor/
+entry/build/
+entry/.preview/
+*.hap
+*.app
+
+# IDE
+.idea/
+.deveco/
+
+# Node
+node_modules/
+oh_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Signing
+*.p12
+*.p7b
+*.cer

@@ -30,6 +30,13 @@ export interface StationQueryResult {
   needOpenLocationService?: boolean; // 是否需要提示用户开启定位服务
 }
 
+// 插座状态枚举
+export enum OutletStatus {
+  FREE = 1,       // 空闲
+  OCCUPIED = 2,   // 占用
+  BROKEN = 3      // 损坏
+}
+
 // 定义排序模式
 interface SortModeType {
   SERIAL: number;
@@ -66,7 +73,7 @@ export class DataValidator {
       typeof outlet.serial === 'number' && 
       typeof outlet.outletNo === 'string' && 
       typeof outlet.status === 'number' &&
-      [1, 2, 3].includes(outlet.status));
+      [OutletStatus.FREE, OutletStatus.OCCUPIED, OutletStatus.BROKEN].includes(outlet.status));
   }
 
   // 验证StationData数据
