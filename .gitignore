@@ -1,0 +1,42 @@
+# Build outputs
+.hvigor/
+entry/build/
+entry/.preview/
+*.hap
+*.app
+
+# IDE
+.idea/
+.deveco/
+.appanalyzer/
+local.properties
+
+# Node
+node_modules/
+oh_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Signing
+*.p12
+*.p7b
+*.cer
+
+# Machine-specific settings and credentials
+.vscode/
+.fleet/
+.workbuddy/
+.env
+.env.*
+!.env.example
+*.local
+*.pfx
+*.pem
+*.key
+*.jks
+*.keystore
+*.csr
+*.mobileprovision
+*.log

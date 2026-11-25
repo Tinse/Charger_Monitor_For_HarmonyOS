@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "module description"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "充电不愁"
+    },
+    {
+      "name": "location_permission_reason",
+      "value": "需要获取您的位置信息来查找附近的充电站点"
+    }
+  ]
+}
