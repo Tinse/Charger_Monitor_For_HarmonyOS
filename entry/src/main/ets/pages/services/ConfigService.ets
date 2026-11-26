@@ -10,7 +10,7 @@ export class ConfigService {
 
   // 注册配置变更监听
   static addListener(listener: ConfigChangeListener): void {
-    ConfigService.listeners.push(listener);
+    if (!ConfigService.listeners.includes(listener)) ConfigService.listeners.push(listener);
   }
 
   // 注销配置变更监听
@@ -23,8 +23,9 @@ export class ConfigService {
 
   // 通知所有监听器
   private static notifyListeners(config: Record<string, number>, configObj: ChargerConfig | null): void {
-    for (const listener of ConfigService.listeners) {
-      listener(config, configObj);
+    // 已成功持久化的操作不能因某个界面回调异常而向调用者报告保存失败。
+    for (const listener of [...ConfigService.listeners]) {
+      try { listener(config, configObj); } catch (error) { console.error('Config listener failed:', error); }
     }
   }
 
@@ -36,7 +37,7 @@ export class ConfigService {
   // 获取当前配置的站点映射
   static async getCurrentStationConfig(): Promise<Record<string, number>> {
     const config = await ConfigManager.getCurrentConfig();
-    return config ? config.stations : ConfigManager.getDefaultConfig();
+    return config ? config.stations : {};
   }
 
   // 获取当前配置对象
@@ -44,57 +45,44 @@ export class ConfigService {
     return ConfigManager.getCurrentConfig();
   }
 
-  // 切换配置
+  private static afterCommit(storage: ConfigStorage, changedId: string, onlyIfCurrent: boolean = false): void {
+    try { StationService.clearCache(); } catch (error) { console.error('Failed to clear config cache:', error); }
+    const config = storage.configs.find(item => item.id === storage.currentConfigId) || null;
+    if (!onlyIfCurrent || (config && config.id === changedId)) {
+      ConfigService.notifyListeners(config ? config.stations : {}, config);
+    }
+  }
+
+  // 写操作返回成功与持久化结果一致；通知使用写入成功时的快照，不依赖后置读取。
   static async switchConfig(configId: string): Promise<void> {
-    await ConfigManager.setCurrentConfig(configId);
-    StationService.clearCache();
-
-    const config = await ConfigManager.getCurrentConfig();
-    const stationConfig = config ? config.stations : ConfigManager.getDefaultConfig();
-    ConfigService.notifyListeners(stationConfig, config);
+    const switched = await ConfigManager.setCurrentConfig(configId, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId);
+    });
+    if (!switched) throw new Error('配置不存在或已被删除');
   }
 
-  // 添加配置
   static async addConfig(name: string, stations: Record<string, number>): Promise<ChargerConfig> {
-    const newConfig = await ConfigManager.addConfig(name, stations);
-    StationService.clearCache();
-
-    // 如果是第一个配置，自动成为当前配置
-    const configStorage = await ConfigManager.getConfigs();
-    if (configStorage.currentConfigId === newConfig.id) {
-      ConfigService.notifyListeners(stations, newConfig);
-    }
-
-    return newConfig;
+    return ConfigManager.addConfig(name, stations, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId, true);
+    });
   }
 
-  // 更新配置
   static async updateConfig(configId: string, name: string, stations: Record<string, number>): Promise<boolean> {
-    const result = await ConfigManager.updateConfig(configId, name, stations);
-    if (result) {
-      StationService.clearCache();
-
-      // 如果更新的是当前配置，通知变更
-      const currentConfig = await ConfigManager.getCurrentConfig();
-      if (currentConfig && currentConfig.id === configId) {
-        ConfigService.notifyListeners(stations, currentConfig);
-      }
-    }
-    return result;
+    return ConfigManager.updateConfig(configId, name, stations, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId, true);
+    });
   }
 
-  // 删除配置
   static async deleteConfig(configId: string): Promise<boolean> {
-    const result = await ConfigManager.deleteConfig(configId);
-    if (result) {
-      StationService.clearCache();
+    return ConfigManager.deleteConfig(configId, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId);
+    });
+  }
 
-      // 通知当前配置可能已变更
-      const config = await ConfigManager.getCurrentConfig();
-      const stationConfig = config ? config.stations : ConfigManager.getDefaultConfig();
-      ConfigService.notifyListeners(stationConfig, config);
-    }
-    return result;
+  static async restoreDefaultConfigs(): Promise<void> {
+    return ConfigManager.restoreDefaultConfigs((storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId);
+    });
   }
 
   // 获取默认配置

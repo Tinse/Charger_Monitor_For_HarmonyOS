@@ -1,6 +1,6 @@
 # 充电不愁 · HarmonyOS 7
 
-当前版本：**1.7.0**（versionCode `1007000`）。
+当前版本 **1.8.0**（versionCode `1008000`）。[下载未签名 HAP](https://github.com/Tinse/Charger_Monitor_For_HarmonyOS/releases/tag/v1.8.0)
 
 面向电子科技大学充电场景的原生 ArkTS / ArkUI 应用。查看充电站插座状态、寻找附近站点、保存常用站点组合，并浏览内置校园地图。
 
@@ -11,30 +11,40 @@
 | 页面 | 功能 | 实现入口 |
 | --- | --- | --- |
 | 监控 | 空闲 / 占用 / 故障 / 总数统计；查看占用插座的功率、费用和时长；按名称搜索；按序号、空闲数、功率、费用、时长排序 | [ChargerMonitorUI.ets](entry/src/main/ets/pages/components/ChargerMonitorUI.ets) |
-| 配置 | 根据设备位置查询附近站点并显示距离；搜索、多选和命名保存；在监控页切换、编辑、删除站点组合 | [StationPickerUI.ets](entry/src/main/ets/pages/components/StationPickerUI.ets)、[ConfigService.ets](entry/src/main/ets/pages/services/ConfigService.ets) |
+| 配置 | 监控页切换配置；设置页进入详情；自定义配置可编辑名称与站点；默认配置可复制后修改；两类配置均可确认删除，并可恢复默认配置 | [ConfigDetailUI.ets](entry/src/main/ets/pages/components/ConfigDetailUI.ets)、[StationPickerUI.ets](entry/src/main/ets/pages/components/StationPickerUI.ets)、[ConfigService.ets](entry/src/main/ets/pages/services/ConfigService.ets) |
 | 地图 | 内置静态校园地图；双指缩放、单指拖动、缩放按钮和复位；缩放范围 50%～500% | [MapViewerUI.ets](entry/src/main/ets/pages/components/MapViewerUI.ets) |
 | 外观 | 跟随系统 / 深色 / 浅色，主题设置保存在本地；底部 HDS 浮动导航栏，支持切换沉浸材质效果 | [Index.ets](entry/src/main/ets/pages/Index.ets)、[ThemeManager.ets](entry/src/main/ets/pages/theme/ThemeManager.ets) |
 
-内置三套配置：D 区（3 站）、主楼 C 区（3 站）、商业街（19 站）。首次启动默认使用 D 区；旧自定义配置和当前选择会保留。默认配置只读，自定义配置可以创建、编辑和删除；在监控页或设置页点击配置切换。站点 ID、名称与坐标见 [核对记录](docs/stations.md)。
+内置两套配置：主楼 C 区（3 站）、商业街（19 站）。首次启动默认使用主楼 C 区；旧的 D 区预设移除，原先选中 D 区时迁移到剩余可用配置，已有自定义配置保留。监控页的配置标签用于切换；设置页点击配置进入详情，不改变当前监控配置。默认配置保持原始站点，可复制为自定义配置；自定义配置可编辑名称、增加或移除站点。默认和自定义配置均可经过确认后删除。站点 ID、名称与坐标见 [核对记录](docs/stations.md)。
 
-设置页点击「增加配置」进入独立的二级页面，底部页签自动隐藏。填写名称后，可搜索站点名称或地址，也可点击「主楼C区」「商业街」快捷词，再点「勾选结果」。批量勾选采用累加方式，保留其他关键词下的选择；「取消结果」仅移除当前结果，「已选」用于复查组合。搜索忽略空格和英文大小写。
+设置页点击「增加配置」进入独立的二级页面，底部页签自动隐藏。填写名称后，可搜索站点名称或地址，也可点击「主楼C区」「商业街」快捷词，再点「勾选结果」。批量勾选采用累加方式，保留其他关键词下的选择；「取消结果」仅移除当前结果，「已选」用于复查组合。搜索忽略空格和英文大小写。配置至少保留一个站点，名称不能为空或与已有配置重名。
 
-地图是应用内置图片，不提供实时定位标记、站点叠加或路线导航。应用当前提供状态查询，不包含扫码启动充电、支付或账户登录流程。
+在配置详情中点击「编辑名称与站点」可增减站点或改名。重新定位后，原先勾选但已超出查询范围的站点仍保留在草稿中。不同站点重名或已选站点资料缺失时，保存按钮会提示调整选择或重新加载。保存后返回详情，带着修改返回时可选择继续编辑或放弃修改。
+
+删除默认配置后会保存删除记录（`deletedPresetIds`），重新读取或重启不会自动恢复。删除当前配置时切换到剩余配置；删除最后一套配置后保留空列表，监控页引导增加配置，不自动补回预设。设置中的「恢复默认配置」仅在明确点击后恢复两套预设，保留自定义配置和仍有效的当前选择；如自定义名称与预设冲突，会提示先重命名，不覆盖已有内容。删除弹窗展示期间锁定重复操作，取消后恢复可操作状态。
+
+首次读取配置出错时，监控页提供「重新读取配置」。设置页会保留最近一次成功读出的列表。存储格式损坏时会阻止写入，避免用默认配置覆盖个人配置。
+
+地图使用内置校园图片。双指缩放以两指中心为焦点，放大后可单指拖动到地图边缘，点击复位可恢复到居中的 100% 视图。
 
 ## 软件架构
 
-工程采用 Stage 模型，只有一个 `entry` 模块和一个 `EntryAbility`。主页面和地图沿用 ArkUI 状态管理 V1；监控页、设置首页、站点选择页、搜索栏和分段控件使用 V2（`@ComponentV2`、`@Local`、`@Param`、`@Event`），明确输入、局部状态和事件契约。没有 WebView、应用自建后端或第三方运行时依赖。
+工程采用 Stage 模型，只有一个 `entry` 模块和一个 `EntryAbility`。主页面和地图沿用 ArkUI 状态管理 V1；监控页、设置首页、配置详情、站点选择页、搜索栏和分段控件使用 V2（`@ComponentV2`、`@Local`、`@Param`、`@Event`），明确输入、局部状态和事件契约。没有 WebView、应用自建后端或第三方运行时依赖。
 
 ```mermaid
 flowchart TD
     Ability[EntryAbility<br/>生命周期、Context、窗口] --> Root[Index / MainApp<br/>三页签、主题、共享配置]
     Root --> Monitor[ChargerMonitorUI]
     Root --> Settings[SettingsUI]
-    Settings -->|增加配置| Nav[Navigation / NavDestination]
-    Nav --> Picker[StationPickerUI]
+    Settings -->|配置详情 / 增加配置| Nav[Navigation / NavDestination]
+    Monitor -->|管理配置| Nav
+    Nav --> Detail[ConfigDetailUI]
+    Detail -->|编辑 / 复制| Picker[StationPickerUI]
+    Nav --> Picker
     Root --> Map[MapViewerUI<br/>本地地图图片]
     Monitor --> Config[ConfigService<br/>配置变更通知]
     Picker --> Config
+    Detail --> Config
     Config --> Store[ConfigManager]
     Store --> Prefs[ArkData Preferences]
     Config -->|配置变化时清缓存| Stations[StationService]
@@ -51,18 +61,22 @@ flowchart TD
 ### 数据流与职责
 
 1. **启动**：`EntryAbility` 注入 `ApplicationContext`，初始化配置存储、共享主题状态和主窗口，再加载 `pages/Index`。配置初始化使用共享 Promise，页面读取会等待初始化完成，不依赖已废弃的全局 `getContext()`。
-2. **站点监控**：页面将 `{站点名称: 站点 ID}` 交给 `StationService`；服务先读缓存，再通过 `ChargerApi` 读取插座列表，并补充占用插座的功率、费用和时长。每批最多并发 4 个站点，单站请求失败不会丢弃其他成功结果。
+2. **站点监控**：页面将 `{站点名称: 站点 ID}` 交给 `StationService`；服务先读缓存，再通过 `ChargerApi` 读取插座列表，并补充占用插座的功率、费用和时长。每批最多并发 4 个站点；返回成功站点及失败站点名称。部分失败会提示缺失站点，全部失败时保留同一配置的上次数据并提示重试。
 3. **附近站点**：`StationService` 检查附近列表缓存；未命中时，`ChargerApi` 委托 `LocationService` 处理定位能力、系统定位开关和授权，然后使用坐标查询站点并计算直线距离。此处是直线距离，不是步行或骑行距离。
-4. **配置变更**：`ConfigService` 写入 `ConfigManager`，清除站点缓存，并通过 listener 通知 `Index` 更新共享状态；监控页监听配置变化重新加载。配置 ID 和站点 ID 用于列表稳定标识。
+4. `ConfigManager` 按顺序完成配置的读取、修改和写入。写盘失败时会尝试恢复写入前的值，回滚也失败时提示重新打开应用核对。配置变化后，`ConfigService` 使用一致的当前配置快照通知页面，单个监听回调异常不会阻止其余回调。
 5. **界面派生状态**：监控列表的过滤、排序由 V2 `@Monitor` 更新；主题由 `ThemeManager` 映射颜色并保存偏好，窗口状态通过 `AppStateKeys` 共享。
 
 ### 刷新、缓存与资源释放
 
-- 监控页可见时每 30 秒检查一次数据；`TabContent.onWillShow/onWillHide` 将 Tab 切换及前后台变化传递给监控组件，隐藏时停止自动刷新。
-- 站点选择二级页只在可见时主动获取定位；从系统位置设置返回且列表仍为空时重新查询，避免在后台发起仅允许使用期间的定位请求。
-- 站点和附近列表使用 60 秒的进程内缓存；因此自动检查不等于每 30 秒都重新发网络请求。退出进程后缓存消失。
-- 手动刷新清缓存后获取数据，带 3 秒冷却；配置切换、更新和删除也会清缓存。
-- 同时发生的刷新以较新结果为准，避免旧配置的慢响应覆盖当前页面。
+- 应用在前台、当前页签为监控且没有二级页面覆盖时，每 30 秒检查一次站点数据。切换页签、打开详情或进入后台会停止自动刷新。返回监控时重新检查。
+- 站点选择二级页只在可见时主动获取定位；从系统位置设置返回且尚未查询、列表为空或此前使用默认位置时重新查询，避免在后台发起仅允许使用期间的定位请求。
+- 站点和附近列表使用 60 秒的进程内缓存。附近列表会保留上次的定位来源，例如使用设备位置或因缺少权限而使用校区默认位置。再次使用缓存时，页面会标明来源和缓存状态。
+- 顶部按钮、下拉刷新和错误页重试共用同一刷新流程：清缓存、执行请求、反馈结果，并在结束时释放刷新状态。
+- 3 秒冷却从触发刷新时开始，以绝对时间计算剩余秒数；界面显示倒计时。请求尚未结束时仍禁止重复刷新，冷却结束不代表慢请求已完成；页面返回前台时按当前时间校正倒计时。
+- 切换配置后会清空旧列表与搜索条件，显示当前配置中的站点名称。清除缓存前发出的慢请求随后返回时，其结果也无法写回已清除的缓存。
+- 「数据获取于」显示当前已加载站点中，客户端最早一次从接口成功取回数据的月日、时分秒。再次命中缓存会保留原时间。部分失败会列出未加载的站点，全部失败会保留同一配置上次的数据和时间。
+- 占用插座的功率统一按 W 展示，保留小数，并将 kW 转换为 W。缺失的功率、费用、时长保持未知。遇到重复插座或未知状态，所在站点会计入加载失败，以免误报故障或重复计数。
+- 启动时仅读取外观偏好。修改主题或沉浸光感时若写盘失败，会提示重试并尝试恢复原选择。
 - 监控站点和附近站点使用 `Repeat.virtualScroll()` 虚拟列表，只构建可见行及少量缓存行；二级页保存按钮固定在安全区域内，无需滚过整份站点列表。
 - 两个站点搜索框使用 300 毫秒防抖，输入停顿后更新结果，不要求额外提交搜索。
 - HTTP 实例在 `finally` 中销毁；组件销毁时清理定时器和定位开关监听。
@@ -79,7 +93,7 @@ entry/src/main/
 │       ├── ChargerModels.ets     插座、站点、配置等类型
 │       ├── ApiConfig.ets         API 地址、坐标和时间参数
 │       ├── ConfigManager.ets     Preferences 配置读写
-│       ├── PresetConfigs.ets     已核对的三套校园预设
+│       ├── PresetConfigs.ets     已核对的两套校园预设
 │       ├── AppState.ets          共享状态键
 │       ├── api/                  充电站 HTTP 接口
 │       ├── services/             配置、站点、定位服务
@@ -91,7 +105,9 @@ entry/src/main/
 build-profile.json5               API 与产品构建配置
 hvigor/hvigor-config.json5         Hvigor 开发态版本
 oh-package.json5                  包配置（无外部依赖）
-scripts/test-core.cjs              使用 SDK 编译器的核心逻辑回归
+scripts/test-core.cjs              使用 SDK 编译器的配置与选择回归
+scripts/test-refresh.cjs           冷却、请求互斥与失败处理回归
+docs/function-audit.md             按钮与操作审查、验证状态及待办
 ```
 
 ## 开发环境与运行
@@ -133,8 +149,9 @@ devecocli run --device $deviceName --debug-line
 
 监控默认站点不要求位置权限。点击增加配置进入站点选择二级页时才查询位置；用户仅允许模糊定位也可继续使用附近查询。定位权限仅声明为使用期间访问。
 
-- 系统定位开关关闭：提示打开设置，不将其误判为授权被拒绝。
+- 系统定位开关关闭：提示打开设置；未查询时不宣称已使用默认位置。
 - 用户拒绝授权、设备不支持定位或定位超时：显示回退状态，按 `ApiConfig` 中的清水河校区附近默认坐标查询。
+- 缺少有效坐标的站点显示「距离未知」，不显示成 0 米；有效距离按直线距离排序。
 - 模拟器没有真实 GPS；测试附近查询时可注入坐标，返回结果不能用于证明真实设备定位精度。
 
 ```powershell
@@ -175,27 +192,30 @@ devecocli log --device $deviceName --bundle-name com.example.uestc_charger_monit
 
 ## 验证范围
 
-核心逻辑回归使用 SDK 自带的 TypeScript 编译器，直接加载当前 ArkTS 源码，覆盖预设加载和旧配置保留、关键词匹配与批量勾选、CRUD / 切换 / 重新加载、缓存有效期边界、距离计算和数据校验；Preferences 使用内存适配器，不代表真实设备 SDK 测试。
+逻辑回归使用 SDK 自带的 TypeScript 编译器加载当前 ArkTS 模块。`test-core` 通过内存 Preferences 验证配置增删改、默认配置迁移与恢复、并发写入、配置损坏保护、写盘失败回滚、监听回调异常、选择站点完整性和外观设置回滚。
 
 ```powershell
 node scripts/test-core.cjs
+node scripts/test-refresh.cjs
 ```
 
-此外通过真实构建、模拟器页面操作和日志检查验证，不将已删除的空测试模板当成测试覆盖。设备回归时至少核对：
+刷新脚本用可控时钟、站点服务替身和模拟 HTTP 响应，覆盖冷却与慢请求互斥、全部或部分失败、并发上限、缓存清除后的旧响应、定位来源与实际获取时间，以及功率单位和缺失字段的解析。
+
+逐按钮的源码审查、逻辑测试覆盖和模拟器验证状态记录在 [功能审查报告](docs/function-audit.md)。本轮模拟器状态应按实际执行证据回填，不沿用上一版本的通过结果。设备回归时至少核对：
 
 1. HAP 元数据的 Release SDK 与编译 / 目标 / 最低 API；构建成功后设备上仍存在应用进程和可见页面。
 2. 默认监控数据、搜索和排序、手动刷新、隐藏页面暂停自动刷新。
 3. 地图缩放、拖动和复位；主题切换及重新启动后恢复。
 4. 附近站点获取、权限拒绝 / 模糊授权 / 定位开关关闭的处理。
-5. 配置创建、切换、编辑、删除及重启后的持久化；检查本次运行的崩溃记录。
+5. 配置创建、切换、编辑、默认与自定义删除、重启后不复活、删除最后配置后的空态，以及恢复默认与同名冲突；检查本次运行的崩溃记录。
 
 本地验证日志和截图写入 `.deveco/harmony7-validation/`，该目录不提交 Git。模拟器验证不等同于真机性能测量或应用市场发布验收。
 
 ## 界面设计参考
 
-导航使用透明背景的单色系统 Symbol，当前页签以蓝色强调。设置采用浅灰画布、圆角分组卡片与分级文字；新增配置通过 Navigation / NavDestination 提供系统返回和二级页面转场，保存操作避让系统导航条。深色模式使用独立配色。
+导航使用透明背景的单色系统 Symbol，当前页签以蓝色强调。设置采用浅灰画布、圆角分组卡片与分级文字；配置详情、新增与编辑通过 Navigation / NavDestination 提供系统返回和二级页面转场，保存操作避让系统导航条。深色模式使用独立配色。
 
-参考华为官方：[HarmonyOS Symbol](https://developer.huawei.com/consumer/cn/doc/design-guides/system-icons-0000001929854962/)、[工具栏与安全区域](https://developer.huawei.com/consumer/cn/doc/design-guides/toolbar-0000001929683232/)、[HDS 浮动页签](https://developer.huawei.com/consumer/cn/doc/HarmonyOS-Guides/ui-design-hds-tabs-bar-floating/)、[Navigation](https://developer.huawei.com/consumer/cn/doc/HarmonyOS-Guides/arkts-navigation-navigation/)。本次通过模拟器截图检查设置页、站点选择页、深浅主题及返回路径，验证材料位于 `.deveco/settings-redesign/`。
+参考华为官方：[HarmonyOS Symbol](https://developer.huawei.com/consumer/cn/doc/design-guides/system-icons-0000001929854962/)、[工具栏与安全区域](https://developer.huawei.com/consumer/cn/doc/design-guides/toolbar-0000001929683232/)、[HDS 浮动页签](https://developer.huawei.com/consumer/cn/doc/HarmonyOS-Guides/ui-design-hds-tabs-bar-floating/)、[Navigation](https://developer.huawei.com/consumer/cn/doc/HarmonyOS-Guides/arkts-navigation-navigation/)。此前界面改版的模拟器截图位于 `.deveco/settings-redesign/`；本轮功能修复的验证状态以 [功能审查报告](docs/function-audit.md) 为准。
 
 ## 公开仓库与本机配置
 

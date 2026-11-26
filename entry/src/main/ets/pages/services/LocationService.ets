@@ -46,7 +46,7 @@ export class LocationService {
     if (canIUse('SystemCapability.Location.Location.Core')) {
       try {
         if (!geoLocationManager.isLocationEnabled()) {
-          return { location: fallback, status: '定位服务未开启，使用默认位置', needOpenLocationService: true };
+          return { location: fallback, status: '定位服务未开启，请开启后重新定位', needOpenLocationService: true };
         }
         if (context && !await LocationService.requestLocationPermissions(context)) {
           return { location: fallback, status: '位置权限被拒绝，使用默认位置' };
@@ -68,7 +68,7 @@ export class LocationService {
       } catch (error) {
         ErrorHandler.handle(error, 'LocationService.getLocationWithPermissionRetry');
         if ((error as BusinessError).code === 3301100) {
-          return { location: fallback, status: '定位服务未开启，使用默认位置', needOpenLocationService: true };
+          return { location: fallback, status: '定位服务未开启，请开启后重新定位', needOpenLocationService: true };
         }
         return { location: fallback, status: '定位暂不可用，使用默认位置' };
       }

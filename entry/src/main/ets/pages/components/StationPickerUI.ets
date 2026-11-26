@@ -1,5 +1,5 @@
 // StationPickerUI.ets - 站点选择器组件
-import { StationBrief } from '../ChargerModels';
+import { ChargerConfig, StationBrief } from '../ChargerModels';
 import { ConfigService } from '../services/ConfigService';
 import { ThemeManager, ThemeColors } from '../theme/ThemeManager';
 import { ErrorHandler } from '../utils/ErrorHandler';
@@ -15,6 +15,13 @@ import { ApiConfig } from '../ApiConfig';
 @ComponentV2
 export struct StationPickerUI {
   @Param isActive: boolean = false;
+  @Param initialConfig: ChargerConfig | null = null;
+  @Param editConfigId: string = '';
+  @Event onDirtyChange: (dirty: boolean) => void = () => {};
+  private originalName: string = '';
+  private originalIds: number[] = [];
+  private lastLocationStatus: string = '';
+
   @Param theme: ThemeColors = ThemeManager.getDarkColors();
   @Event onSaved: () => void = () => {};
   @Local configName: string = '';
@@ -35,20 +42,51 @@ export struct StationPickerUI {
 
   private locationServiceStateCallback?: (state: boolean) => void;
   private hasAppeared: boolean = false;
+  private hasFetched: boolean = false;
+  private fetchSequence: number = 0;
+  private needsLocationService: boolean = false;
 
   @Monitor('isActive')
   onVisibilityChange() {
-    if (this.hasAppeared && this.isActive && !this.isLoading && this.allStations.length === 0) {
+    if (this.hasAppeared && this.isActive && !this.isLoading && (!this.hasFetched || this.needsLocationService || this.allStations.length === 0 || this.lastLocationStatus.includes('默认位置') || this.lastLocationStatus.includes('权限'))) {
+      if (this.lastLocationStatus.includes('默认位置') || this.lastLocationStatus.includes('权限')) StationService.clearCache();
       this.fetchAllStations();
     }
   }
 
   aboutToAppear() {
     this.hasAppeared = true;
+    const initial = this.initialConfig;
+    if (initial) {
+      this.configName = this.editConfigId ? initial.name : `${initial.name} 副本`;
+      this.selectedIds = Object.values(initial.stations);
+      this.allStations = Object.keys(initial.stations).map(name => ({
+        stationId: initial.stations[name], stationName: name,
+        address: '已保存站点，附近查询后更新', freeNum: -1
+      } as StationBrief));
+    }
+    this.originalName = this.editConfigId ? this.configName : '';
+    this.originalIds = this.editConfigId ? [...this.selectedIds] : [];
+    this.onDirtyChange(this.hasChanges());
+    this.updateFilteredStations();
     if (this.isActive) {
       this.fetchAllStations();
     }
     this.setupLocationServiceListener();
+  }
+
+  hasChanges(): boolean {
+    return this.configName !== this.originalName || this.selectedIds.length !== this.originalIds.length ||
+      this.selectedIds.some(id => !this.originalIds.includes(id));
+  }
+
+  @Monitor('configName', 'selectedIds')
+  onDraftChange() { this.onDirtyChange(this.hasChanges()); }
+
+  async refreshLocation() {
+    if (this.isLoading) return;
+    StationService.clearCache();
+    await this.fetchAllStations();
   }
 
   updateFilteredStations() {
@@ -66,6 +104,7 @@ export struct StationPickerUI {
 
   aboutToDisappear() {
     this.hasAppeared = false;
+    this.fetchSequence++;
     if (this.searchTimer !== -1) {
       clearTimeout(this.searchTimer);
       this.searchTimer = -1;
@@ -86,8 +125,8 @@ export struct StationPickerUI {
     if (canIUse('SystemCapability.Location.Location.Core')) {
       try {
         this.locationServiceStateCallback = (state: boolean) => {
-          if (state && this.isActive && this.allStations.length === 0 && !this.isLoading) {
-            this.fetchAllStations();
+          if (state && this.isActive && (this.needsLocationService || this.allStations.length === 0 || this.lastLocationStatus.includes('默认位置') || this.lastLocationStatus.includes('权限')) && !this.isLoading) {
+            this.refreshLocation();
           }
         };
         geoLocationManager.on('locationEnabledChange', this.locationServiceStateCallback);
@@ -110,6 +149,9 @@ export struct StationPickerUI {
   }
 
   async fetchAllStations() {
+    if (this.isLoading) return;
+    this.hasFetched = true;
+    const request = ++this.fetchSequence;
     this.isLoading = true;
     this.errorMessage = '';
     this.loadingMessage = "正在获取位置信息…";
@@ -117,23 +159,30 @@ export struct StationPickerUI {
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       const result = await StationService.fetchNearbyStations(context);
-      this.allStations = result.stations;
+      if (!this.hasAppeared || request !== this.fetchSequence) return;
+      this.allStations = StationSelection.mergeAvailable(result.stations, this.allStations, this.selectedIds);
       this.locationStatus = result.locationStatus;
+      this.lastLocationStatus = result.locationStatus;
+      this.needsLocationService = result.needOpenLocationService === true;
 
-      if (result.needOpenLocationService) {
+      if (result.needOpenLocationService && this.isActive) {
         this.showLocationServiceDialog();
       }
 
-      if (this.allStations.length === 0 && !result.needOpenLocationService) {
+      if ((this.needsLocationService || this.allStations.length === 0 || this.lastLocationStatus.includes('默认位置') || this.lastLocationStatus.includes('权限')) && !result.needOpenLocationService) {
         this.loadingMessage = "未找到附近充电站";
       }
 
       this.updateFilteredStations();
     } catch (error) {
-      ErrorHandler.handle(error, 'StationPickerUI.fetchAllStations');
-      this.errorMessage = "加载失败，请检查网络连接";
+      if (this.hasAppeared && request === this.fetchSequence) {
+        ErrorHandler.handle(error, 'StationPickerUI.fetchAllStations');
+        this.errorMessage = '加载失败，请检查网络连接';
+        this.locationStatus = this.errorMessage;
+      }
+    } finally {
+      if (request === this.fetchSequence) this.isLoading = false;
     }
-    this.isLoading = false;
   }
 
   openLocationSettings() {
@@ -174,6 +223,11 @@ export struct StationPickerUI {
     this.updateFilteredStations();
   }
 
+  stationSummary(station: StationBrief): string {
+    const distance = station.formattedDistance || '距离未知';
+    return `${distance} · ${station.freeNum < 0 ? '空闲数量未知' : `空闲 ${station.freeNum}`}`;
+  }
+
   isStationSelected(stationId: number): boolean {
     return this.selectedIds.includes(stationId);
   }
@@ -188,18 +242,24 @@ export struct StationPickerUI {
       ErrorHandler.showToast(this.getUIContext(), '请填写配置名称');
       return;
     }
-    if (this.selectedIds.length === 0) return;
+    if (this.selectedIds.length === 0) { ErrorHandler.showToast(this.getUIContext(), '请至少选择一个站点'); return; }
     this.isSaving = true;
-    const stations: Record<string, number> = {};
-    this.allStations.filter(station => this.selectedIds.includes(station.stationId))
-      .forEach(station => { stations[station.stationName] = station.stationId; });
     try {
-      await ConfigService.addConfig(this.configName.trim(), stations);
+      const stations = StationSelection.toStationMap(this.allStations, this.selectedIds);
+      if (this.editConfigId) {
+        const updated = await ConfigService.updateConfig(this.editConfigId, this.configName.trim(), stations);
+        if (!updated) throw new Error('配置不存在或无法编辑');
+      } else {
+        await ConfigService.addConfig(this.configName.trim(), stations);
+      }
+      if (!this.hasAppeared) return;
+      this.onDirtyChange(false);
       ErrorHandler.showToast(this.getUIContext(), '配置已保存，可在监控页切换');
       this.onSaved();
     } catch (error) {
+      if (!this.hasAppeared) return;
       ErrorHandler.handle(error, 'StationPickerUI.saveConfig');
-      ErrorHandler.showToast(this.getUIContext(), '保存失败，请重试');
+      ErrorHandler.showToast(this.getUIContext(), (error as Error).message || '保存失败，请重试');
     } finally {
       this.isSaving = false;
     }
@@ -248,7 +308,7 @@ export struct StationPickerUI {
         Text(`${this.filteredStations.length} 个结果`).fontSize(13).fontColor(this.theme.textSecondary).layoutWeight(1)
         Button('勾选结果').height(36).fontSize(13).backgroundColor(Color.Transparent).fontColor(this.theme.accent)
           .enabled(!this.isLoading && this.filteredStations.length > 0).onClick(() => this.selectAllStations())
-        Button('取消结果').height(36).fontSize(13).backgroundColor(Color.Transparent).fontColor(this.theme.textSecondary)
+        Button('取消结果').enabled(!this.isLoading && this.filteredStations.some(station => this.selectedIds.includes(station.stationId))).height(36).fontSize(13).backgroundColor(Color.Transparent).fontColor(this.theme.textSecondary)
           .onClick(() => this.deselectAllStations())
       }.width('100%')
       if (this.isLoading) {
@@ -275,7 +335,7 @@ export struct StationPickerUI {
                     .fontColor(this.theme.textPrimary).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
                   Text(row.item.address).fontSize(12).fontColor(this.theme.textSecondary)
                     .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Text(`${row.item.formattedDistance || ''} · 空闲 ${row.item.freeNum}`)
+                  Text(this.stationSummary(row.item))
                     .fontSize(12).fontColor(this.theme.textSecondary)
                 }.layoutWeight(1).alignItems(HorizontalAlign.Start)
                 Checkbox({ name: row.item.stationName }).select(this.selectedIds.includes(row.item.stationId))
@@ -286,7 +346,12 @@ export struct StationPickerUI {
           }).key((station: StationBrief) => station.stationId.toString()).virtualScroll()
         }.layoutWeight(1).cachedCount(3).width('100%')
       }
+      Text('附近查询将设备或默认校区坐标发送至 wemp.issks.com，仅用于查找附近站点。')
+        .fontSize(11).fontColor(this.theme.textSecondary).width('100%')
       Row() {
+        Button(this.isLoading ? '定位中…' : '重新定位').fontSize(12).height(32)
+          .backgroundColor(Color.Transparent).fontColor(this.theme.accent).enabled(!this.isLoading)
+          .onClick(() => this.refreshLocation())
         Text(this.locationStatus).fontSize(11).fontColor(this.theme.textSecondary).layoutWeight(1).maxLines(1)
         Button(this.showSelectedOnly ? '查看全部' : `已选 ${this.selectedIds.length}`)
           .backgroundColor(Color.Transparent).fontColor(this.theme.accent).fontSize(13).height(32)

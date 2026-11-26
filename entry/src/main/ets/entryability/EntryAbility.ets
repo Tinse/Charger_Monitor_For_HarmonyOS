@@ -75,7 +75,12 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
+    AppStorage.setOrCreate<boolean>(AppStateKeys.FOREGROUND, true);
     this.updateSystemDarkMode();
     this.updateStatusBarStyle();
+  }
+
+  onBackground(): void {
+    AppStorage.setOrCreate<boolean>(AppStateKeys.FOREGROUND, false);
   }
 }

@@ -109,4 +109,5 @@ export class DataValidator {
 export interface ConfigStorage {
   configs: ChargerConfig[];
   currentConfigId?: string;
+  deletedPresetIds?: string[];
 }

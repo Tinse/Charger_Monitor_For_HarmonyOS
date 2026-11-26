@@ -68,6 +68,7 @@ const LIGHT_COLORS: ThemeColors = {
 export class ThemeManager {
   private static readonly STORE_NAME = 'theme_store';
   private static readonly KEY_THEME_MODE = 'theme_mode';
+  private static readonly KEY_IMMERSIVE_ENABLED = 'immersive_enabled';
 
   // 获取主题颜色
   static getColors(isDark: boolean): ThemeColors {
@@ -84,15 +85,27 @@ export class ThemeManager {
     return LIGHT_COLORS;
   }
 
-  // 保存主题模式设置
-  static async saveThemeMode(context: common.UIAbilityContext, mode: ThemeMode): Promise<void> {
+  private static async savePreference(context: common.UIAbilityContext, key: string,
+    value: number | boolean, previous: number | boolean): Promise<void> {
+    let store: preferences.Preferences | undefined;
+    let changed: boolean = false;
     try {
-      const store = await preferences.getPreferences(context, ThemeManager.STORE_NAME);
-      await store.put(ThemeManager.KEY_THEME_MODE, mode);
+      store = await preferences.getPreferences(context, ThemeManager.STORE_NAME);
+      await store.put(key, value);
+      changed = true;
       await store.flush();
-      console.log('Theme mode saved:', mode);
     } catch (error) {
-      console.error('Failed to save theme mode:', error);
+      console.error('Failed to persist appearance preference:', error);
+      if (store && changed) {
+        // put updates the shared cache first. Restore it before a later flush can persist this failed change.
+        try {
+          await store.put(key, previous);
+          await store.flush();
+        } catch (rollbackError) {
+          console.error('Failed to restore appearance preference:', rollbackError);
+        }
+      }
+      throw new Error('外观设置保存失败');
     }
   }
 
@@ -101,7 +114,9 @@ export class ThemeManager {
     try {
       const store = await preferences.getPreferences(context, ThemeManager.STORE_NAME);
       const mode = await store.get(ThemeManager.KEY_THEME_MODE, ThemeMode.SYSTEM);
-      return mode as ThemeMode;
+      if (mode === ThemeMode.LIGHT) return ThemeMode.LIGHT;
+      if (mode === ThemeMode.DARK) return ThemeMode.DARK;
+      return ThemeMode.SYSTEM;
     } catch (error) {
       console.error('Failed to load theme mode:', error);
       return ThemeMode.SYSTEM;
@@ -127,14 +142,37 @@ export class ThemeManager {
     }
   }
 
-  // 应用主题模式（保存 + 设置系统颜色模式）
-  static async applyThemeMode(context: common.UIAbilityContext, mode: ThemeMode): Promise<void> {
-    await ThemeManager.saveThemeMode(context, mode);
+  static async loadImmersiveEnabled(context: common.UIAbilityContext): Promise<boolean> {
     try {
-      const applicationContext = context.getApplicationContext();
-      applicationContext.setColorMode(ThemeManager.getColorModeConstant(mode));
+      const store = await preferences.getPreferences(context, ThemeManager.STORE_NAME);
+      const enabled = await store.get(ThemeManager.KEY_IMMERSIVE_ENABLED, true);
+      return typeof enabled === 'boolean' ? enabled : true;
     } catch (error) {
-      console.error('Failed to apply theme mode:', error);
+      console.error('Failed to load immersive preference:', error);
+      return true;
+    }
+  }
+
+  static async saveImmersiveEnabled(context: common.UIAbilityContext, enabled: boolean, previous: boolean): Promise<void> {
+    await ThemeManager.savePreference(context, ThemeManager.KEY_IMMERSIVE_ENABLED, enabled, previous);
+  }
+
+  static applyThemeMode(context: common.UIAbilityContext, mode: ThemeMode): void {
+    try {
+      context.getApplicationContext().setColorMode(ThemeManager.getColorModeConstant(mode));
+    } catch (error) {
+      console.error('Failed to apply system color mode:', error);
+      throw new Error('系统主题切换失败');
+    }
+  }
+
+  static async changeThemeMode(context: common.UIAbilityContext, mode: ThemeMode, previous: ThemeMode): Promise<void> {
+    ThemeManager.applyThemeMode(context, mode);
+    try {
+      await ThemeManager.savePreference(context, ThemeManager.KEY_THEME_MODE, mode, previous);
+    } catch (error) {
+      ThemeManager.applyThemeMode(context, previous);
+      throw new Error('主题设置保存失败');
     }
   }
 }

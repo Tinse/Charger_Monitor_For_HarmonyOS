@@ -12,11 +12,15 @@ export struct MapViewerUI {
   @State lastOffsetX: number = 0;
   @State lastOffsetY: number = 0;
 
+  private pinching: boolean = false;
+  private panInterrupted: boolean = false;
   private pinchCenterRatioX: number = 0.5;
   private pinchCenterRatioY: number = 0.5;
   private minScale: number = 0.5;
   private maxScale: number = 5.0;
-  private dragSensitivity: number = 2.5;
+  // 使用资源的实际比例计算可拖动边界，缩放与手指位移保持一比一。
+  private imageWidth: number = 2938;
+  private imageHeight: number = 3000;
   private containerWidth: number = 0;
   private containerHeight: number = 0;
 
@@ -28,50 +32,62 @@ export struct MapViewerUI {
           .width('100%')
           .height('100%')
           .objectFit(ImageFit.Contain)
+          .accessibilityText('清水河校区充电站分布图，可双指缩放、单指拖动')
+          .onComplete(event => {
+            if (event && event.width > 0 && event.height > 0) {
+              this.imageWidth = event.width;
+              this.imageHeight = event.height;
+              this.clampOffset();
+            }
+          })
           .scale({ x: this.scaleValue, y: this.scaleValue })
           .translate({ x: this.offsetX, y: this.offsetY })
-          .gesture(
-            GestureGroup(GestureMode.Parallel,
-              PinchGesture({ fingers: 2 })
-                .onActionStart((event: GestureEvent) => {
-                  this.pinchValue = this.scaleValue;
-                  this.calculatePinchCenterRatio(event.pinchCenterX, event.pinchCenterY);
-                })
-                .onActionUpdate((event: GestureEvent) => {
-                  const oldScale = this.scaleValue;
-                  let newScale = this.pinchValue * event.scale;
-                  newScale = Math.max(this.minScale, Math.min(this.maxScale, newScale));
-                  this.scaleValue = newScale;
-                  this.adjustOffsetOnPinchScale(oldScale, newScale);
-                })
-                .onActionEnd(() => {
-                  this.pinchValue = this.scaleValue;
-                }),
-              PanGesture({ fingers: 1, direction: PanDirection.All })
-                .onActionStart(() => {
-                  this.lastOffsetX = this.offsetX;
-                  this.lastOffsetY = this.offsetY;
-                })
-                .onActionUpdate((event: GestureEvent) => {
-                  if (this.scaleValue > 1.0) {
-                    this.offsetX = this.lastOffsetX + event.offsetX * this.dragSensitivity;
-                    this.offsetY = this.lastOffsetY + event.offsetY * this.dragSensitivity;
-                    this.clampOffset();
-                  }
-                })
-                .onActionEnd(() => {
-                  this.lastOffsetX = this.offsetX;
-                  this.lastOffsetY = this.offsetY;
-                })
-            )
-          )
       }
       .width('100%')
       .height('100%')
       .clip(true)
+      .gesture(
+        GestureGroup(GestureMode.Parallel,
+          PinchGesture({ fingers: 2 })
+            .onActionStart((event: GestureEvent) => {
+              this.pinchValue = this.scaleValue;
+              this.pinching = true;
+              this.panInterrupted = true;
+              this.calculatePinchCenterRatio(event.pinchCenterX, event.pinchCenterY);
+            })
+            .onActionUpdate((event: GestureEvent) => {
+              let newScale = this.pinchValue * event.scale;
+              newScale = Math.max(this.minScale, Math.min(this.maxScale, newScale));
+              this.scaleValue = newScale;
+              this.adjustOffsetOnPinchScale(event.pinchCenterX, event.pinchCenterY);
+            })
+            .onActionEnd(() => { this.pinching = false; })
+            .onActionCancel(() => { this.pinching = false; }),
+          PanGesture({ fingers: 1, direction: PanDirection.All })
+            .onActionStart(() => {
+              this.panInterrupted = this.pinching;
+              this.lastOffsetX = this.offsetX;
+              this.lastOffsetY = this.offsetY;
+            })
+            .onActionUpdate((event: GestureEvent) => {
+              if (!this.panInterrupted && this.scaleValue > 1.0) {
+                this.offsetX = this.lastOffsetX + event.offsetX;
+                this.offsetY = this.lastOffsetY + event.offsetY;
+                this.clampOffset();
+              }
+            })
+            .onActionEnd(() => {
+              this.lastOffsetX = this.offsetX;
+              this.lastOffsetY = this.offsetY;
+            })
+        )
+      )
       .onAreaChange((oldValue: Area, newValue: Area) => {
         this.containerWidth = Number(newValue.width);
         this.containerHeight = Number(newValue.height);
+        this.clampOffset();
+        this.lastOffsetX = this.offsetX;
+        this.lastOffsetY = this.offsetY;
       })
 
       // Zoom level badge in bottom-left corner
@@ -100,16 +116,9 @@ export struct MapViewerUI {
         .height(40)
         .backgroundColor(this.theme.tertiaryBackground)
         .borderRadius(10)
-        .onClick(() => {
-          const oldScale = this.scaleValue;
-          const newScale = Math.min(this.maxScale, this.scaleValue + 0.25);
-          this.scaleValue = newScale;
-          if (newScale <= 1.0) {
-            this.offsetX = 0;
-            this.offsetY = 0;
-          }
-          this.pinchValue = newScale;
-        })
+        .enabled(this.scaleValue < this.maxScale)
+        .accessibilityText('放大地图')
+        .onClick(() => this.setScale(this.scaleValue + 0.25))
 
         // Current zoom percentage text
         Text(`${(this.scaleValue * 100).toFixed(0)}%`)
@@ -131,16 +140,9 @@ export struct MapViewerUI {
         .height(40)
         .backgroundColor(this.theme.tertiaryBackground)
         .borderRadius(10)
-        .onClick(() => {
-          const oldScale = this.scaleValue;
-          const newScale = Math.max(this.minScale, this.scaleValue - 0.25);
-          this.scaleValue = newScale;
-          if (newScale <= 1.0) {
-            this.offsetX = 0;
-            this.offsetY = 0;
-          }
-          this.pinchValue = newScale;
-        })
+        .enabled(this.scaleValue > this.minScale)
+        .accessibilityText('缩小地图')
+        .onClick(() => this.setScale(this.scaleValue - 0.25))
 
         // Divider line
         Row()
@@ -151,14 +153,15 @@ export struct MapViewerUI {
 
         // Reset button
         Button() {
-          Text('O')
-            .fontSize(16)
-            .fontColor(this.theme.textSecondary)
+          SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
+            .fontSize(20)
+            .fontColor([this.theme.textPrimary])
         }
         .width(40)
         .height(40)
         .backgroundColor(this.theme.tertiaryBackground)
         .borderRadius(10)
+        .accessibilityText('复位地图')
         .onClick(() => {
           this.resetView();
         })
@@ -181,8 +184,9 @@ export struct MapViewerUI {
   }
 
   private calculatePinchCenterRatio(centerX: number, centerY: number) {
-    const displayWidth = this.containerWidth * this.scaleValue;
-    const displayHeight = this.containerHeight * this.scaleValue;
+    const displayWidth = this.getFittedWidth() * this.scaleValue;
+    const displayHeight = this.getFittedHeight() * this.scaleValue;
+    if (displayWidth <= 0 || displayHeight <= 0) return;
     const imgLeft = (this.containerWidth - displayWidth) / 2 + this.offsetX;
     const imgTop = (this.containerHeight - displayHeight) / 2 + this.offsetY;
     this.pinchCenterRatioX = (centerX - imgLeft) / displayWidth;
@@ -191,28 +195,11 @@ export struct MapViewerUI {
     this.pinchCenterRatioY = Math.max(0, Math.min(1, this.pinchCenterRatioY));
   }
 
-  private adjustOffsetOnPinchScale(oldScale: number, newScale: number) {
-    if (newScale <= 1.0) {
-      this.offsetX = 0;
-      this.offsetY = 0;
-      return;
-    }
-    const oldDisplayWidth = this.containerWidth * oldScale;
-    const oldDisplayHeight = this.containerHeight * oldScale;
-    const newDisplayWidth = this.containerWidth * newScale;
-    const newDisplayHeight = this.containerHeight * newScale;
-    const centerInOldImgX = oldDisplayWidth * this.pinchCenterRatioX;
-    const centerInOldImgY = oldDisplayHeight * this.pinchCenterRatioY;
-    const centerInNewImgX = newDisplayWidth * this.pinchCenterRatioX;
-    const centerInNewImgY = newDisplayHeight * this.pinchCenterRatioY;
-    const oldImgLeft = (this.containerWidth - oldDisplayWidth) / 2 + this.offsetX;
-    const oldImgTop = (this.containerHeight - oldDisplayHeight) / 2 + this.offsetY;
-    const centerScreenX = oldImgLeft + centerInOldImgX;
-    const centerScreenY = oldImgTop + centerInOldImgY;
-    const newImgLeft = centerScreenX - centerInNewImgX;
-    const newImgTop = centerScreenY - centerInNewImgY;
-    this.offsetX = newImgLeft - (this.containerWidth - newDisplayWidth) / 2;
-    this.offsetY = newImgTop - (this.containerHeight - newDisplayHeight) / 2;
+  private adjustOffsetOnPinchScale(centerX: number, centerY: number) {
+    const scaledWidth = this.getFittedWidth() * this.scaleValue;
+    const scaledHeight = this.getFittedHeight() * this.scaleValue;
+    this.offsetX = centerX - this.containerWidth / 2 + (0.5 - this.pinchCenterRatioX) * scaledWidth;
+    this.offsetY = centerY - this.containerHeight / 2 + (0.5 - this.pinchCenterRatioY) * scaledHeight;
     this.clampOffset();
   }
 
@@ -227,9 +214,28 @@ export struct MapViewerUI {
     });
   }
 
-  private clampOffset() {
-    const maxOffset = (this.scaleValue - 1) * 300;
-    this.offsetX = Math.max(-maxOffset, Math.min(maxOffset, this.offsetX));
-    this.offsetY = Math.max(-maxOffset, Math.min(maxOffset, this.offsetY));
+  private setScale(scale: number): void {
+    this.scaleValue = Math.max(this.minScale, Math.min(this.maxScale, scale));
+    this.pinchValue = this.scaleValue;
+    this.clampOffset();
+    this.lastOffsetX = this.offsetX;
+    this.lastOffsetY = this.offsetY;
+  }
+
+  private getFittedWidth(): number {
+    if (this.containerWidth <= 0 || this.containerHeight <= 0) return 0;
+    return Math.min(this.containerWidth, this.containerHeight * this.imageWidth / this.imageHeight);
+  }
+
+  private getFittedHeight(): number {
+    if (this.containerWidth <= 0 || this.containerHeight <= 0) return 0;
+    return Math.min(this.containerHeight, this.containerWidth * this.imageHeight / this.imageWidth);
+  }
+
+  private clampOffset(): void {
+    const maxOffsetX = Math.max(0, (this.getFittedWidth() * this.scaleValue - this.containerWidth) / 2);
+    const maxOffsetY = Math.max(0, (this.getFittedHeight() * this.scaleValue - this.containerHeight) / 2);
+    this.offsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, this.offsetX));
+    this.offsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, this.offsetY));
   }
 }

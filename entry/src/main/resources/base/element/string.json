@@ -2,11 +2,11 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "module description"
+      "value": "校园充电站状态查询与配置管理"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "description"
+      "value": "查看充电站空闲插座、校园地图并管理常用站点"
     },
     {
       "name": "EntryAbility_label",

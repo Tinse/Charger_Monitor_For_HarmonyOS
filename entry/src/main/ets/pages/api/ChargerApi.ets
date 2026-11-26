@@ -8,13 +8,13 @@ import { calculateDistance, formatDistance } from '../utils/DistanceCalc';
 import { LocationService } from '../services/LocationService';
 
 interface PowerFeeData {
-  billingPower?: string;
+  billingPower?: string | number;
 }
 
 interface OutletDetailData {
   powerFee?: PowerFeeData;
-  usedfee?: string;
-  usedmin?: string;
+  usedfee?: string | number;
+  usedmin?: string | number;
 }
 
 interface OutletItem {
@@ -58,6 +58,12 @@ interface NearbyStationPayload {
 }
 
 export class ChargerApi {
+  private static parseNonNegative(value: string | number | undefined): number | undefined {
+    if (value === undefined || (typeof value === 'string' && !value.trim())) return undefined;
+    const parsed = typeof value === 'number' ? value : parseFloat(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  }
+
   // 获取单个插座的详情
   static async fetchOutletDetail(outletNo: string): Promise<Partial<OutletDetail>> {
     let httpRequest = http.createHttp();
@@ -75,12 +81,14 @@ export class ChargerApi {
         let data = JSON.parse(response.result as string) as ApiResponseData;
         if (data.code == "1" && data.data) {
           let d = data.data as OutletDetailData;
-          let powerStr = d.powerFee?.billingPower || "0W";
-          let power_w = parseInt(powerStr.replace(/[^0-9]/g, '')) || 0;
+          const powerValue = d.powerFee?.billingPower;
+          let power = ChargerApi.parseNonNegative(powerValue);
+          if (power !== undefined && typeof powerValue === 'string' && /kw/i.test(powerValue)) power *= 1000;
+          if (power !== undefined && !Number.isFinite(power)) power = undefined;
           return {
-            power_w: power_w,
-            fee: parseFloat(d.usedfee || "0") || 0.0,
-            used_min: parseInt(d.usedmin || "0") || 0
+            power_w: power,
+            fee: ChargerApi.parseNonNegative(d.usedfee),
+            used_min: ChargerApi.parseNonNegative(d.usedmin)
           };
         }
       }
@@ -111,18 +119,23 @@ export class ChargerApi {
 
           if (response.responseCode === 200) {
             let data = JSON.parse(response.result as string) as ApiResponseData;
-            if (data.code == "1") {
+            if (data.code == "1" && Array.isArray(data.data)) {
               let outlets: OutletDetail[] = [];
               let promises: Promise<void>[] = [];
 
-              let outletItems = data.data as OutletItem[] || [];
+              const outletItems = data.data as OutletItem[];
+              // 畸形或未知状态不能被计入“故障”，也不应静默少计插座。
+              if (outletItems.some(item => !item || !Number.isInteger(item.outletSerialNo) ||
+                (item.outletSerialNo as number) <= 0 || typeof item.outletNo !== 'string' || !item.outletNo.trim() ||
+                ![OutletStatus.FREE, OutletStatus.OCCUPIED, OutletStatus.BROKEN].includes(item.currentChargingRecordId as number))) {
+                return null;
+              }
+              if (outletItems.some((item, index) => outletItems.findIndex(other => other.outletNo === item.outletNo || other.outletSerialNo === item.outletSerialNo) !== index)) return null;
               for (let item of outletItems) {
-                let rawStatus = item.currentChargingRecordId || 0;
-                let status = [OutletStatus.FREE, OutletStatus.OCCUPIED, OutletStatus.BROKEN].includes(rawStatus) ? rawStatus : OutletStatus.BROKEN;
-
+                const status = item.currentChargingRecordId as number;
                 let outlet: OutletDetail = {
-                  serial: item.outletSerialNo || 0,
-                  outletNo: item.outletNo || "",
+                  serial: item.outletSerialNo as number,
+                  outletNo: item.outletNo as string,
                   status: status
                 };
                 outlets.push(outlet);
@@ -198,13 +211,18 @@ export class ChargerApi {
       if (response.responseCode === 200) {
         let rawData = JSON.parse(response.result as string) as NearbyStationResponse;
 
-        if (rawData && rawData.data && rawData.data.elecStationData) {
+        if (rawData && rawData.code == "1" && rawData.data && Array.isArray(rawData.data.elecStationData)) {
           let stations: StationBrief[] = [];
           for (let i = 0; i < rawData.data.elecStationData.length; i++) {
-            let item = rawData.data.elecStationData[i];
+            const item = rawData.data.elecStationData[i];
+            if (!item || !Number.isInteger(item.stationId) || (item.stationId as number) <= 0 ||
+              typeof item.stationName !== 'string' || !item.stationName.trim() ||
+              stations.some(station => station.stationId === item.stationId)) continue;
 
-            let distance = 0;
-            if (item.latitude && item.longitude) {
+            let distance: number | undefined = undefined;
+            if (item.latitude !== undefined && item.longitude !== undefined &&
+              Number.isFinite(item.latitude) && Number.isFinite(item.longitude) &&
+              Math.abs(item.latitude) <= 90 && Math.abs(item.longitude) <= 180) {
               distance = calculateDistance(
                 userLocation.latitude,
                 userLocation.longitude,
@@ -216,15 +234,15 @@ export class ChargerApi {
             let stationBrief: StationBrief = {
               stationId: item.stationId || 0,
               stationName: item.stationName || "未知站点",
-              address: item.address || "",
-              freeNum: item.freeNum || 0,
+              address: typeof item.address === 'string' ? item.address : '',
+              freeNum: Number.isInteger(item.freeNum) && (item.freeNum as number) >= 0 ? item.freeNum as number : -1,
               distance: distance,
-              formattedDistance: formatDistance(distance)
+              formattedDistance: distance === undefined ? '距离未知' : formatDistance(distance)
             };
             stations.push(stationBrief);
           }
 
-          stations.sort((a, b) => (a.distance || 0) - (b.distance || 0));
+          stations.sort((a, b) => (a.distance === undefined ? Number.MAX_VALUE : a.distance) - (b.distance === undefined ? Number.MAX_VALUE : b.distance));
 
           return {
             stations: stations,

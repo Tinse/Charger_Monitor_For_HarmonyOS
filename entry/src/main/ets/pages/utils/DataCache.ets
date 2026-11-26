@@ -28,11 +28,16 @@ export class DataCache {
     return null;
   }
 
+  // 与 getStation 配套读取实际获取时间；缓存命中不会推进此时间。
+  static getStationTimestamp(stationId: number): number | undefined {
+    return DataCache.stationCache.get(stationId)?.timestamp;
+  }
+
   // 设置站点数据缓存
-  static setStation(stationId: number, data: StationData): void {
+  static setStation(stationId: number, data: StationData, fetchedAt: number = Date.now()): void {
     DataCache.stationCache.set(stationId, {
       data: data,
-      timestamp: Date.now()
+      timestamp: fetchedAt
     });
     console.log(`[DataCache] Cached station ${stationId}`);
   }

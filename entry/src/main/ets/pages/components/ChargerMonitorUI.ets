@@ -1,6 +1,7 @@
 // ChargerMonitorUI.ets - 充电站监控页面组件
 import { StationData, OutletDetail, SORT_MODE, ChargerConfig, OutletStatus } from '../ChargerModels';
-import { PresetConfigs } from '../PresetConfigs';
+import { StationSelection } from '../utils/StationSelection';
+import { RefreshGate } from '../utils/RefreshGate';
 import { ConfigService } from '../services/ConfigService';
 import { ThemeManager, ThemeColors } from '../theme/ThemeManager';
 import { ErrorHandler } from '../utils/ErrorHandler';
@@ -36,7 +37,9 @@ export struct ChargerMonitorUI {
   @Local isLoading: boolean = true;
   @Local errorMessage: string = '';
   @Local isRefreshing: boolean = false;
-  @Local canRefresh: boolean = true;
+  @Local isFetching: boolean = false;
+  @Local lastUpdated: string = '';
+  @Event onManageConfig: (id: string) => void = () => {};
   @Local refreshCooldown: number = 0;
 
   // 配置相关状态
@@ -44,23 +47,20 @@ export struct ChargerMonitorUI {
   @Local currentConfig: ChargerConfig | null = null;
 
 
-  // 编辑配置对话框状态
-  @Local showEditDialog: boolean = false;
-  @Local editingConfig: ChargerConfig | null = null;
-  @Local editingConfigName: string = "";
-  @Local editingStations: Record<string, number> = {};
-
   private refreshInterval: number = -1;
   private cooldownInterval: number = -1;
   private fetchVersion: number = 0;
+  private refreshGate: RefreshGate = new RefreshGate(ApiConfig.MANUAL_REFRESH_COOLDOWN);
 
   aboutToAppear() {
     this.loadConfigs();
-    this.fetchData();
+    if (this.isActive) this.fetchData();
     this.startAutoRefresh();
   }
 
   aboutToDisappear() {
+    this.fetchVersion++;
+    this.isFetching = false;
     this.stopAutoRefresh();
     if (this.searchTimer !== -1) {
       clearTimeout(this.searchTimer);
@@ -78,8 +78,11 @@ export struct ChargerMonitorUI {
       this.loadConfigs();
       this.fetchData();
       this.startAutoRefresh();
+      this.startCooldownTicker();
     } else {
+      this.showSortMenu = false;
       this.stopAutoRefresh();
+      this.stopCooldownTicker();
     }
   }
 
@@ -88,8 +91,14 @@ export struct ChargerMonitorUI {
     this.loadConfigs();
     this.fetchVersion++;
     this.stations = [];
+    this.isFetching = false;
     this.isLoading = true;
-    if (this.isActive) this.fetchData();
+    this.errorMessage = '';
+    this.lastUpdated = '';
+    this.searchInputText = '';
+    this.searchText = '';
+    if (this.searchTimer !== -1) clearTimeout(this.searchTimer);
+    if (this.isActive) this.fetchData(true);
   }
 
   onSearchInput(value: string) {
@@ -119,11 +128,14 @@ export struct ChargerMonitorUI {
   }
 
   async loadConfigs() {
-    const configStorage = await ConfigService.loadConfigs();
-    this.configs = configStorage.configs;
-
-    if (configStorage.currentConfigId) {
+    try {
+      const configStorage = await ConfigService.loadConfigs();
+      this.configs = configStorage.configs;
       this.currentConfig = configStorage.configs.find(config => config.id === configStorage.currentConfigId) || null;
+    } catch (error) {
+      this.errorMessage = '配置读取失败，请重试；已有数据仍保留';
+      ErrorHandler.handle(error, 'ChargerMonitorUI.loadConfigs');
+      ErrorHandler.showToast(this.getUIContext(), '配置读取失败，请重试');
     }
   }
 
@@ -132,103 +144,82 @@ export struct ChargerMonitorUI {
     await this.loadConfigs();
   }
 
-  async deleteConfig(configId: string) {
-    await ConfigService.deleteConfig(configId);
-    await this.loadConfigs();
-    ErrorHandler.showToast(this.getUIContext(), '配置已删除');
+  private stopCooldownTicker() {
+    if (this.cooldownInterval !== -1) clearInterval(this.cooldownInterval);
+    this.cooldownInterval = -1;
   }
 
-  // 打开编辑配置对话框
-  openEditDialog(config: ChargerConfig) {
-    this.editingConfig = config;
-    this.editingConfigName = config.name;
-    this.editingStations = JSON.parse(JSON.stringify(config.stations));
-    this.showEditDialog = true;
-  }
-
-  // 保存编辑后的配置
-  async saveEditedConfig() {
-    if (!this.editingConfig) return;
-
-    if (this.editingConfigName.trim() === '') {
-      ErrorHandler.showToast(this.getUIContext(), '请输入配置名称');
-      return;
-    }
-
-    if (Object.keys(this.editingStations).length === 0) {
-      ErrorHandler.showToast(this.getUIContext(), '配置中至少需要一个站点');
-      return;
-    }
-
-    try {
-      await ConfigService.updateConfig(
-        this.editingConfig.id,
-        this.editingConfigName.trim(),
-        this.editingStations
-      );
-      await this.loadConfigs();
-      ErrorHandler.showToast(this.getUIContext(), '配置已更新');
-      this.showEditDialog = false;
-    } catch (error) {
-      ErrorHandler.handle(error, 'ChargerMonitorUI.saveEditedConfig');
-      ErrorHandler.showToast(this.getUIContext(), '保存配置失败');
-    }
-  }
-
-  // 从编辑配置中移除站点
-  removeStationFromEdit(stationName: string) {
-    const newStations: Record<string, number> = {};
-    Object.keys(this.editingStations).forEach(key => {
-      if (key !== stationName) {
-        newStations[key] = this.editingStations[key];
-      }
-    });
-    this.editingStations = newStations;
-  }
-
-  async manualRefresh() {
-    if (!this.canRefresh) {
-      const remainingTime = Math.ceil(this.refreshCooldown / 1000);
-      ErrorHandler.showToast(this.getUIContext(), `刷新过快，请等待${remainingTime}秒后重试`);
-      return;
-    }
-
-    this.canRefresh = false;
-    this.refreshCooldown = ApiConfig.MANUAL_REFRESH_COOLDOWN;
-
-    StationService.clearCache();
-    await this.fetchData();
-
-    if (this.cooldownInterval !== -1) {
-      clearInterval(this.cooldownInterval);
-    }
+  private startCooldownTicker() {
+    this.stopCooldownTicker();
+    this.refreshCooldown = this.refreshGate.remaining(Date.now());
+    if (this.refreshCooldown === 0) return;
     this.cooldownInterval = setInterval(() => {
-      this.refreshCooldown -= 100;
-      if (this.refreshCooldown <= 0) {
-        this.canRefresh = true;
-        this.refreshCooldown = 0;
-        if (this.cooldownInterval !== -1) {
-          clearInterval(this.cooldownInterval);
-          this.cooldownInterval = -1;
-        }
-      }
+      this.refreshCooldown = this.refreshGate.remaining(Date.now());
+      if (this.refreshCooldown === 0) this.stopCooldownTicker();
     }, 100);
   }
 
-  async fetchData() {
+  async manualRefresh(source: string = 'button') {
+    if (this.isFetching || !this.refreshGate.tryStart(Date.now())) {
+      this.isRefreshing = false;
+      ErrorHandler.showToast(this.getUIContext(), this.isFetching ? '正在刷新，请稍候' : '刷新过快，请稍后重试');
+      return;
+    }
+    this.startCooldownTicker();
+    console.info(`[MonitorRefresh] start ${source}`);
+    try {
+      StationService.clearCache();
+      const success = await this.fetchData();
+      if (success) ErrorHandler.showToast(this.getUIContext(), '数据已更新');
+      console.info(`[MonitorRefresh] complete ${source}: ${success}`);
+    } finally {
+      this.refreshGate.finish();
+      this.isRefreshing = false;
+      this.refreshCooldown = this.refreshGate.remaining(Date.now());
+    }
+  }
+
+  async fetchData(force: boolean = false): Promise<boolean> {
+    if (this.isFetching && !force) return false;
     const version = ++this.fetchVersion;
+    if (Object.keys(this.stationConfig).length === 0) {
+      this.stations = [];
+      this.lastUpdated = '';
+      this.errorMessage = '';
+      this.isFetching = false;
+      this.isLoading = false;
+      return false;
+    }
+    this.isFetching = true;
     this.errorMessage = '';
     try {
-      const stations = await StationService.fetchStationsForConfig(this.stationConfig);
-      if (version !== this.fetchVersion) {
-        return;
+      const result = await StationService.fetchStationsForConfig(this.stationConfig);
+      if (version !== this.fetchVersion) return false;
+      if (result.stations.length === 0) {
+        this.errorMessage = this.stations.length ? '刷新失败，保留上次数据；请检查网络后重试' : '站点加载失败，请检查网络后重试';
+        return false;
       }
-      this.stations = stations;
+      this.stations = result.stations;
+      if (result.oldestFetchedAt !== undefined) {
+        const fetched = new Date(result.oldestFetchedAt);
+        this.lastUpdated = `数据获取于 ${(fetched.getMonth() + 1).toString().padStart(2, '0')}-${fetched.getDate().toString().padStart(2, '0')} ${fetched.getHours().toString().padStart(2, '0')}:${fetched.getMinutes().toString().padStart(2, '0')}:${fetched.getSeconds().toString().padStart(2, '0')}（已加载站点中最早）`;
+      } else {
+        this.lastUpdated = '';
+      }
+      if (result.failedNames.length) {
+        this.errorMessage = `有 ${result.failedNames.length} 个站点未能加载：${result.failedNames.join('、')}`;
+      }
+      return result.failedNames.length === 0;
     } catch (error) {
+      if (version === this.fetchVersion) this.errorMessage = '加载失败，请检查网络连接后重试';
       ErrorHandler.handle(error, 'ChargerMonitorUI.fetchData');
-      this.errorMessage = '加载失败，请检查网络连接';
+      return false;
+    } finally {
+      if (version === this.fetchVersion) {
+        this.isFetching = false;
+        this.isLoading = false;
+      }
     }
-    this.isLoading = false;
   }
 
   getStats(): StatsResult {
@@ -289,7 +280,7 @@ export struct ChargerMonitorUI {
   @Monitor('stations', 'searchText', 'sortMode')
   onFilterChange() {
     this.filteredStations = this.stations
-      .filter(s => s.name.toLowerCase().includes(this.searchText.toLowerCase()))
+      .filter(s => StationSelection.normalize(s.name).includes(StationSelection.normalize(this.searchText)))
       .map(s => {
         const sortedOutlets = [...s.outlets].sort((a, b) => this.compareOutlets(a, b));
         const station: StationData = { name: s.name, id: s.id, outlets: sortedOutlets };
@@ -389,8 +380,10 @@ export struct ChargerMonitorUI {
 
   build() {
     Column() {
-      Refresh({ refreshing: this.isRefreshing }) {
-        Column() {
+      Refresh({ refreshing: $$this.isRefreshing }) {
+        List({ space: 12 }) {
+          ListItem() {
+            Column() {
           // 1. 统计概览卡片
           Column() {
             // 状态行
@@ -408,14 +401,17 @@ export struct ChargerMonitorUI {
                   .foregroundColor(this.getStats().anyFree ? this.theme.success : this.theme.error)
                   .margin({ right: 8 })
 
-                Text(this.getStats().anyFree ? "有空闲插座" : "全部占用")
+                Text(this.stations.length === 0 ? "尚未获取数据" : this.getStats().anyFree ? "有空闲插座" : "暂无空闲插座")
                   .fontColor(this.theme.textPrimary)
                   .fontSize(15)
                   .fontWeight(FontWeight.Medium)
 
                 Blank()
 
-                Button(this.canRefresh ? "刷新" : `${Math.ceil(this.refreshCooldown / 1000)}s`)
+                Button() {
+                  Text(this.refreshCooldown > 0 ? `${Math.ceil(this.refreshCooldown / 1000)}s` : this.isFetching ? '刷新中' : '刷新')
+                    .fontSize(12).fontColor('#ffffff')
+                }.id('monitorRefreshButton')
                   .onClick(async () => {
                     try {
                       await this.manualRefresh();
@@ -424,9 +420,9 @@ export struct ChargerMonitorUI {
                       ErrorHandler.showToast(this.getUIContext(), '刷新失败');
                     }
                   })
-                  .enabled(this.canRefresh)
+                  .enabled(Object.keys(this.stationConfig).length > 0 && !this.isFetching && this.refreshCooldown === 0)
                   .fontSize(12)
-                  .backgroundColor(this.canRefresh ? this.theme.accent : this.theme.tertiaryBackground)
+                  .backgroundColor(!this.isFetching && this.refreshCooldown === 0 ? this.theme.accent : this.theme.tertiaryBackground)
                   .fontColor('#ffffff')
                   .width(56)
                   .height(28)
@@ -571,14 +567,9 @@ export struct ChargerMonitorUI {
 
             Blank()
 
-            Text(this.currentConfig && PresetConfigs.isPreset(this.currentConfig.id) ? '默认配置' : '编辑')
-              .fontSize(12)
-              .fontColor(this.theme.accent)
-              .onClick(() => {
-                if (this.currentConfig && !PresetConfigs.isPreset(this.currentConfig.id)) {
-                  this.openEditDialog(this.currentConfig);
-                }
-              })
+            Button('管理配置')
+              .fontSize(12).height(36).backgroundColor(Color.Transparent).fontColor(this.theme.accent)
+              .onClick(() => { if (this.currentConfig) this.onManageConfig(this.currentConfig.id); })
           }
           .width('100%')
           .padding({ left: 4, right: 4, bottom: 6 })
@@ -614,10 +605,17 @@ export struct ChargerMonitorUI {
         .padding({ left: 16, right: 16, top: 8 })
       }
 
+              if (this.lastUpdated) {
+                Text(this.lastUpdated).fontSize(12).fontColor(this.theme.textSecondary).width('100%').padding(16)
+              }
+              if (this.errorMessage && this.stations.length) {
+                Text(this.errorMessage).fontSize(13).fontColor(this.theme.error).width('100%').padding(16)
+              }
+            }.width('100%')
+          }
       // 4. 站点列表
       if (this.isLoading && this.stations.length === 0) {
-        // 加载状态
-        Column() {
+        ListItem() { Column() {
           LoadingProgress()
             .width(40)
             .height(40)
@@ -628,10 +626,10 @@ export struct ChargerMonitorUI {
         }
         .width('100%')
         .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
+        .height(200).justifyContent(FlexAlign.Center) }
       } else if (this.stations.length === 0) {
         // 空状态 / 错误状态
-        Column({ space: 12 }) {
+        ListItem() { Column({ space: 12 }) {
           if (this.errorMessage) {
             // 错误状态
             Text('加载失败')
@@ -644,27 +642,35 @@ export struct ChargerMonitorUI {
               .textAlign(TextAlign.Center)
           } else {
             // 空状态
-            Text('暂无充电站数据')
+            Text(Object.keys(this.stationConfig).length === 0 ? '暂无配置' : '暂无充电站数据')
               .fontColor(this.theme.textPrimary)
               .fontSize(16)
-            Text('请检查配置是否正确')
+            Text(Object.keys(this.stationConfig).length === 0 ? '到设置中增加配置或恢复默认配置' : '请检查配置是否正确')
               .fontColor(this.theme.textSecondary)
               .fontSize(14)
           }
-          Button(this.errorMessage ? '重试' : '刷新')
+          Button(Object.keys(this.stationConfig).length === 0 ? '增加配置' : this.errorMessage ? '重试' : '刷新')
             .onClick(() => {
-              StationService.clearCache();
-              this.fetchData();
+              if (Object.keys(this.stationConfig).length === 0) this.onManageConfig('');
+              else this.manualRefresh('retry');
             })
             .backgroundColor(this.theme.accent)
             .fontColor('#ffffff')
         }
         .width('100%')
         .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
+        .height(200).justifyContent(FlexAlign.Center) }
+      } else if (this.filteredStations.length === 0) {
+        ListItem() { Column({ space: 12 }) {
+          Text('没有匹配的站点').fontColor(this.theme.textPrimary)
+          Button('清除搜索').onClick(() => {
+            if (this.searchTimer !== -1) clearTimeout(this.searchTimer);
+            this.searchInputText = '';
+            this.searchText = '';
+          })
+        }.height(200).width('100%').justifyContent(FlexAlign.Center) }
       } else {
         // 站点列表
-        List({ space: 12 }) {
           Repeat<StationWithFreeCount>(this.filteredStations).each((stationRow: RepeatItem<StationWithFreeCount>) => {
             ListItem() {
               Column() {
@@ -725,6 +731,9 @@ export struct ChargerMonitorUI {
 
                       // 状态信息
                       if (outlet.status === OutletStatus.OCCUPIED) {
+                        if (outlet.power_w === undefined && outlet.fee === undefined && outlet.used_min === undefined) {
+                          Text('占用 · 详情暂不可用').fontSize(12).fontColor(this.theme.textSecondary)
+                        }
                         // 占用状态 - 显示详情
                         if (outlet.power_w !== undefined) {
                           Text(`${outlet.power_w}W`)
@@ -747,7 +756,7 @@ export struct ChargerMonitorUI {
                         if (outlet.used_min !== undefined) {
                           Text(`${outlet.used_min}分钟`)
                             .fontSize(11)
-                            .fontColor(Color.White)
+                            .fontColor('#252525')
                             .backgroundColor('#ffd60a')
                             .padding({ left: 6, right: 6, top: 2, bottom: 2 })
                             .borderRadius(6)
@@ -776,6 +785,7 @@ export struct ChargerMonitorUI {
             }
           }).key((item: StationWithFreeCount) => item.station.id.toString()).virtualScroll()
 
+      }
           // 底部安全区域占位
           ListItem() {
             Divider()
@@ -783,122 +793,11 @@ export struct ChargerMonitorUI {
               .height(100)
           }
         }
-        .layoutWeight(1)
-        .padding({ left: 16, right: 16, top: 12 })
-        .backgroundColor(this.theme.background)
-        }
-      }
-      }
-      .onRefreshing(async () => {
-        StationService.clearCache();
-        await this.fetchData();
-        this.isRefreshing = false;
-      })
-
-      // 编辑配置对话框
-      if (this.showEditDialog && this.editingConfig) {
-        Column() {
-          // 标题
-          Text('编辑配置')
-            .fontColor(this.theme.textPrimary)
-            .fontSize(18)
-            .fontWeight(FontWeight.Bold)
-
-          // 配置名称输入
-          TextInput({ placeholder: '配置名称', text: this.editingConfigName })
-            .onChange((value) => { this.editingConfigName = value; })
-            .width('100%')
-            .height(44)
-            .backgroundColor(this.theme.secondaryBackground)
-            .fontColor(this.theme.textPrimary)
-            .margin({ top: 16 })
-
-          // 站点列表标题
-          Text(`站点列表 (${Object.keys(this.editingStations).length})`)
-            .fontColor(this.theme.textSecondary)
-            .fontSize(14)
-            .margin({ top: 16 })
-            .alignSelf(ItemAlign.Start)
-
-          // 站点列表
-          List({ space: 8 }) {
-            ForEach(Object.keys(this.editingStations), (stationName: string) => {
-              ListItem() {
-                Row() {
-                  Text(stationName)
-                    .fontColor(this.theme.textPrimary)
-                    .fontSize(14)
-                    .layoutWeight(1)
-
-                  Text('删除')
-                    .fontSize(12)
-                    .fontColor(this.theme.error)
-                    .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-                    .backgroundColor('rgba(255,69,58,0.15)')
-                    .borderRadius(6)
-                    .onClick(() => {
-                      this.removeStationFromEdit(stationName);
-                    })
-                }
-                .width('100%')
-                .padding(12)
-                .backgroundColor(this.theme.secondaryBackground)
-                .borderRadius(8)
-              }
-            }, (stationName: string) => stationName)
-          }
-          .width('100%')
-          .height(200)
-          .margin({ top: 8 })
-
-          // 按钮
-          Column({ space: 12 }) {
-            // 删除配置按钮
-            Button('删除此配置')
-              .width('100%')
-              .height(40)
-              .backgroundColor('rgba(255,69,58,0.15)')
-              .fontColor(this.theme.error)
-              .onClick(async () => {
-                if (this.editingConfig) {
-                  await this.deleteConfig(this.editingConfig.id);
-                  this.showEditDialog = false;
-                }
-              })
-
-            Row() {
-              Button('取消')
-                .layoutWeight(1)
-                .height(40)
-                .backgroundColor(this.theme.tertiaryBackground)
-                .fontColor(this.theme.textPrimary)
-                .onClick(() => {
-                  this.showEditDialog = false;
-                })
-
-              Button('保存')
-                .layoutWeight(1)
-                .height(40)
-                .backgroundColor(this.theme.accent)
-                .fontColor('#ffffff')
-                .margin({ left: 12 })
-                .onClick(async () => {
-                  await this.saveEditedConfig();
-                })
-            }
-            .width('100%')
-          }
-          .width('100%')
-          .margin({ top: 16 })
-        }
-        .width('90%')
-        .height('80%')
-        .padding(20)
-        .backgroundColor(this.theme.cardBackground)
-        .borderRadius(16)
-        .position({ x: '50%', y: '50%' })
-        .translate({ x: '-50%', y: '-50%' })
-      }
+        .width('100%').height('100%')
+        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+        .scrollBar(BarState.Auto)
+      }.width('100%').layoutWeight(1).pullToRefresh(true)
+        .onRefreshing(() => { this.manualRefresh('pull'); })
     }
     .width('100%')
     .height('100%')
