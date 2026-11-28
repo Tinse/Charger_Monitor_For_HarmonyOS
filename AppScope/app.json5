@@ -2,9 +2,10 @@
   "app": {
     "bundleName": "com.example.uestc_charger_monitor",
     "vendor": "example",
-    "versionCode": 1009000,
-    "versionName": "1.9.0",
+    "versionCode": 1009001,
+    "versionName": "1.9.1",
     "icon": "$media:charger_icon",
+    "configuration": "$profile:configuration",
     "label": "$string:app_name"
   }
 }

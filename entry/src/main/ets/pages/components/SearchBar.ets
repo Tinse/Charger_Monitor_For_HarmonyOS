@@ -12,16 +12,16 @@ export struct SearchBar {
   build() {
     Row() {
       SymbolGlyph($r('sys.symbol.magnifyingglass'))
-        .fontSize(18).fontColor([this.theme.textSecondary])
+        .fontSize(16).fontColor([this.theme.textSecondary])
         .margin({ right: 8 })
 
       TextInput({ placeholder: this.placeholder, text: this.value })
         .layoutWeight(1)
-        .height(36)
+        .height(40).padding({ left: 0, right: 0 })
         .backgroundColor('transparent')
         .fontColor(this.theme.textPrimary)
         .placeholderColor(this.theme.textSecondary)
-        .fontSize(14)
+        .fontSize(13)
         .onChange((value: string) => {
           this.onChangeCallback(value);
         })
@@ -29,9 +29,9 @@ export struct SearchBar {
           this.onSubmitCallback(this.value);
         })
     }
-    .padding({ left: 12, right: 12, top: 8, bottom: 8 })
+    .padding({ left: 14, right: 12 })
     .backgroundColor(this.theme.secondaryBackground)
-    .borderRadius(20)
+    .borderRadius(12)
     .width('100%')
   }
 }

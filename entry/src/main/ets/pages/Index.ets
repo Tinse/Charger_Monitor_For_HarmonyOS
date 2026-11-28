@@ -191,7 +191,7 @@ struct MainApp {
   tabBuilder(index: number, title: string) {
     Column() {
       SymbolGlyph(index === 0 ? $r('sys.symbol.bolt_1') : index === 1 ? $r('sys.symbol.map') : $r('sys.symbol.gearshape'))
-        .fontSize(24).fontColor([this.activeTab === index ? this.theme.accent : this.theme.textSecondary])
+        .fontSize(22).fontColor([this.activeTab === index ? this.theme.accent : this.theme.textSecondary])
       Text(title)
         .fontSize(11).fontColor(this.activeTab === index ? this.theme.accent : this.theme.textSecondary)
         .margin({ top: 4 })
@@ -270,14 +270,14 @@ struct MainApp {
     .barPosition(BarPosition.End)
     .barFloatingStyle(this.hdsImmersiveEnabled ? {
       barWidth: { smallWidth: 280, mediumWidth: 320, largeWidth: 360 },
-      barBottomMargin: 28,
+      barBottomMargin: 20,
       systemMaterialEffect: {
         materialType: hdsMaterial.MaterialType.IMMERSIVE,
         materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
       }
     } : {
       barWidth: { smallWidth: 280, mediumWidth: 320, largeWidth: 360 },
-      barBottomMargin: 28
+      barBottomMargin: 20
     })
   }
 

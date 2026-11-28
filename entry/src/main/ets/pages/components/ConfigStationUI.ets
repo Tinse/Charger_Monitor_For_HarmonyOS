@@ -133,7 +133,7 @@ export struct ConfigStationUI {
       const result = await this.getUIContext().getPromptAction().showDialog({
         title: '从此配置移除站点？',
         message: `将从“${config.name}”移除“${this.displayName}”。${lastStation ? '移除后会保留这套空配置。' : '其他配置仍可使用此站点。'}`,
-        buttons: [{ text: '取消', color: this.theme.textSecondary }, { text: '移除站点', color: this.theme.error }]
+        buttons: [{ text: '取消', color: this.theme.textSecondary }, { text: '移除站点', color: this.theme.errorText }]
       });
       if (!this.present || result.index !== 1) return;
       await ConfigService.removeStation(this.configId, this.stationId);
@@ -147,66 +147,71 @@ export struct ConfigStationUI {
 
   build() {
     Scroll() {
-      Column({ space: 16 }) {
+      Column({ space: 12 }) {
         if (this.loading) {
           LoadingProgress().width(32).height(32)
         } else if (this.loadError) {
           Text(this.loadError).fontColor(this.theme.textSecondary)
-          Button('重新读取').onClick(() => this.loadStation())
+          Button('重新读取').constraintSize({ minHeight: 40 }).fontSize(14).onClick(() => this.loadStation())
         } else if (!this.config) {
           Text('配置不存在或已被删除').fontColor(this.theme.textSecondary)
         } else if (!this.displayName) {
           Text('此站点已从配置移除').fontColor(this.theme.textSecondary)
         } else {
           Column({ space: 6 }) {
-            Text(this.config.name).fontSize(14).fontColor(this.theme.textSecondary)
-            Text(this.displayName).fontSize(23).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
-            Text(`原站名 · ${this.originalName}`).fontSize(14).fontColor(this.theme.textSecondary)
-            Text(`站点 ID · ${this.stationId}`).fontSize(13).fontColor(this.theme.textSecondary)
+            Text(this.config.name).fontSize(12).fontColor(this.theme.textSecondary)
+            Text(this.displayName).fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
+            if (this.originalName !== this.displayName) {
+              Text(`原站名 · ${this.originalName}`).fontSize(14).fontColor(this.theme.textSecondary)
+            }
+            Text(`站点 ID · ${this.stationId}`).fontSize(12).fontColor(this.theme.textSecondary)
           }.alignItems(HorizontalAlign.Start).width('100%').padding(16)
-            .backgroundColor(this.theme.cardBackground).borderRadius(18)
+            .backgroundColor(this.theme.cardBackground).borderRadius(16)
           Column({ space: 10 }) {
-            Text('配置内显示名').fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
+            Text('配置内显示名').fontSize(15).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
             TextInput({ placeholder: this.originalName, text: this.draftAlias }).id('stationAliasInput')
-              .maxLength(40).height(44).fontColor(this.theme.textPrimary)
+              .maxLength(40).constraintSize({ minHeight: 44 }).fontSize(14).fontColor(this.theme.textPrimary)
               .backgroundColor(this.theme.secondaryBackground).enabled(!this.busy).onChange((value: string) => this.setDraft(value))
-            Text('留空可恢复原站名').fontSize(13).fontColor(this.theme.textSecondary)
-            Text('备注').fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
+            Text('留空可恢复原站名').fontSize(12).fontColor(this.theme.textSecondary)
+            Text('备注').fontSize(15).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
             TextArea({ placeholder: '例如：从西侧车棚进入', text: this.draftNote }).id('stationNoteInput')
-              .maxLength(200).height(68).fontColor(this.theme.textPrimary).enabled(!this.busy)
+              .maxLength(200).constraintSize({ minHeight: 64 }).fontSize(14).backgroundColor(this.theme.secondaryBackground).fontColor(this.theme.textPrimary).enabled(!this.busy)
               .onChange((value: string) => { this.draftNote = value; this.reportDraft(); })
             Row() {
-              Text('暂停此站监控').layoutWeight(1).fontColor(this.theme.textPrimary)
+              Text('暂停此站监控').layoutWeight(1).fontSize(14).fontColor(this.theme.textPrimary)
               Toggle({ type: ToggleType.Switch, isOn: this.draftPaused }).accessibilityText('暂停此站监控')
+                .responseRegion({ x: 0, y: -5, width: '100%', height: 42 }).selectedColor(this.theme.accent)
                 .enabled(!this.busy).onChange((value: boolean) => { this.draftPaused = value; this.reportDraft(); })
             }.width('100%')
             Row({ space: 10 }) {
               if (this.dirty) {
-                Button('取消修改').fontSize(14).backgroundColor(Color.Transparent).fontColor(this.theme.accent)
+                Button('取消修改').constraintSize({ minHeight: 40 }).fontSize(14).backgroundColor(Color.Transparent).fontColor(this.theme.accent)
                   .enabled(!this.busy).onClick(() => this.resetDraft())
               }
-              Button('保存站点设置').fontSize(14).backgroundColor(this.theme.accent).fontColor('#ffffff')
+              Button('保存站点设置').constraintSize({ minHeight: 40 }).fontSize(14).backgroundColor(this.theme.accent).fontColor(this.theme.onAccent)
                 .enabled(!this.busy && this.dirty).onClick(() => this.saveAlias())
             }.width('100%').justifyContent(FlexAlign.End)
           }.alignItems(HorizontalAlign.Start).width('100%').padding(16)
-            .backgroundColor(this.theme.cardBackground).borderRadius(18)
+            .backgroundColor(this.theme.cardBackground).borderRadius(16)
           if (this.dirty) {
-            Text('请先保存或取消修改，再调整顺序、替换或移除。').fontSize(13).fontColor(this.theme.textSecondary)
+            Text('请先保存或取消修改，再调整顺序、替换或移除。').fontSize(12).fontColor(this.theme.textSecondary)
           }
           Row({ space: 8 }) {
             Text(`配置顺序 ${(this.config.members || []).findIndex(item => item.stationId === this.stationId) + 1} / ${this.config.members?.length || 0}`)
-              .layoutWeight(1).fontColor(this.theme.textSecondary)
-            Button('上移').height(36).enabled(!this.busy && !this.dirty && (this.config.members || [])[0]?.stationId !== this.stationId)
+              .layoutWeight(1).fontSize(14).fontColor(this.theme.textSecondary)
+            Button('上移').constraintSize({ minHeight: 40 }).fontSize(14).fontColor(this.theme.infoText).backgroundColor(this.theme.infoSurface)
+              .enabled(!this.busy && !this.dirty && (this.config.members || [])[0]?.stationId !== this.stationId)
               .onClick(() => this.move(-1))
-            Button('下移').height(36).enabled(!this.busy && !this.dirty && (this.config.members || []).findIndex(item =>
+            Button('下移').constraintSize({ minHeight: 40 }).fontSize(14).fontColor(this.theme.infoText).backgroundColor(this.theme.infoSurface)
+              .enabled(!this.busy && !this.dirty && (this.config.members || []).findIndex(item =>
               item.stationId === this.stationId) < (this.config.members?.length || 0) - 1).onClick(() => this.move(1))
           }.width('100%')
-          Button('替换站点').width('100%').height(44).backgroundColor(this.theme.cardBackground).fontColor(this.theme.accent)
+          Button('替换站点').width('100%').constraintSize({ minHeight: 44 }).fontSize(14).backgroundColor(this.theme.cardBackground).fontColor(this.theme.accent)
             .enabled(!this.busy && !this.dirty).onClick(() => { if (this.config) this.onReplace(this.config, this.stationId); })
-          Button('从此配置移除').width('100%').height(44).backgroundColor(this.theme.cardBackground).fontColor(this.theme.error)
+          Button('从此配置移除').width('100%').constraintSize({ minHeight: 44 }).fontSize(14).backgroundColor(this.theme.errorSurface).fontColor(this.theme.errorText)
             .enabled(!this.busy && !this.dirty).onClick(() => this.removeStation())
         }
-      }.padding({ left: 16, right: 16, top: 8, bottom: 18 }).width('100%').alignItems(HorizontalAlign.Start)
+      }.padding({ left: 16, right: 16, top: 8, bottom: 16 }).width('100%').alignItems(HorizontalAlign.Start)
     }.width('100%').height('100%').backgroundColor(this.theme.background)
   }
 }

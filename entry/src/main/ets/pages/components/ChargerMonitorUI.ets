@@ -7,6 +7,7 @@ import { ConfigService } from '../services/ConfigService';
 import { ThemeManager, ThemeColors } from '../theme/ThemeManager';
 import { ErrorHandler } from '../utils/ErrorHandler';
 import { ApiConfig } from '../ApiConfig';
+import { MonitorBadge, MonitorPresentation } from '../utils/MonitorPresentation';
 
 @ComponentV2
 export struct ChargerMonitorUI {
@@ -49,9 +50,12 @@ export struct ChargerMonitorUI {
   @Local detailFailed: number = 0;
   @Local detailSkipped: number = 0;
   @Local detailMessage: string = '';
+  @Local detailSummaryUntil: number = 0;
   @Local detailFailedTargets: MonitorTarget[] = [];
 
   @Local members: ConfigStationMember[] = [];
+  @Local showStationInfo: boolean = false;
+  @Local infoStationId: number = 0;
   private snapshots: Map<number, StationSnapshot> = new Map();
   private details: Map<string, MonitorDetail> = new Map();
   private retries: Map<number, number> = new Map();
@@ -81,6 +85,7 @@ export struct ChargerMonitorUI {
   aboutToDisappear() {
     this.hasAppeared = false;
     this.configLoadVersion++;
+    this.showStationInfo = false;
     this.stopLoads();
     this.stopTimers();
     if (this.searchTimer !== -1) clearTimeout(this.searchTimer);
@@ -116,6 +121,7 @@ export struct ChargerMonitorUI {
 
   @Monitor('stationConfig')
   onStationConfigChange() {
+    this.showStationInfo = false;
     this.stopLoads();
     this.failedIds = [];
     this.missingIds = [];
@@ -125,6 +131,7 @@ export struct ChargerMonitorUI {
     this.detailFailedTargets = [];
     this.detailTotal = 0;
     this.detailMessage = '';
+    this.detailSummaryUntil = 0;
     this.errorMessage = '';
     this.searchText = '';
     this.searchInputText = '';
@@ -186,6 +193,7 @@ export struct ChargerMonitorUI {
     this.pendingIds = [];
     this.refreshGate.finish();
     this.stopDetails(false);
+    this.detailSummaryUntil = 0;
   }
 
   private syncSnapshots(force: boolean = false) {
@@ -346,7 +354,8 @@ export struct ChargerMonitorUI {
       for (const detail of Array.from(this.details.values())) {
         if (detail.state === 'pending') this.details.set(MonitorModel.key(detail.stationId, detail.outletNo, detail.generation), { stationId: detail.stationId, outletNo: detail.outletNo, generation: detail.generation, state: 'stopped' });
       }
-      this.detailMessage = showMessage ? '详情查询已停止；已获取且仍有效的详情仍保留' : '离开监控或网络中断，详情查询已停止';
+      this.detailMessage = MonitorPresentation.detailSummary(this.detailCompleted, this.detailSucceeded, this.detailFailed, this.detailSkipped, true);
+      this.detailSummaryUntil = showMessage ? Date.now() + 3000 : 0;
       this.rebuildRows();
     }
   }
@@ -382,6 +391,7 @@ export struct ChargerMonitorUI {
     this.detailSkipped = 0;
     this.detailFailedTargets = [];
     this.detailMessage = '';
+    this.detailSummaryUntil = 0;
     this.detailStartedAt = Date.now();
     this.detailsRunning = true;
     targets.forEach((target: MonitorTarget) => this.details.set(MonitorModel.key(target.stationId, target.outletNo, target.generation),
@@ -407,7 +417,7 @@ export struct ChargerMonitorUI {
         this.rebuildRows();
       }, () => version === this.detailVersion && this.hasAppeared && this.isActive && this.networkOnline,
       targets.map(target => target.outletNo));
-      if (version === this.detailVersion) this.detailMessage = '本轮详情查询已结束；站点状态更新后请重新查询详情';
+      if (version === this.detailVersion) this.detailMessage = MonitorPresentation.detailSummary(this.detailCompleted, this.detailSucceeded, this.detailFailed, this.detailSkipped);
     } catch (error) {
       if (version === this.detailVersion) {
         this.detailMessage = '详情查询中断，可重试失败项';
@@ -427,33 +437,34 @@ export struct ChargerMonitorUI {
     } finally {
       if (version === this.detailVersion) {
         this.detailsRunning = false;
+        this.detailSummaryUntil = Date.now() + 3000;
         this.rebuildRows();
       }
     }
   }
 
-  private timestamp(time: number | undefined): string {
-    if (time === undefined) return '尚无成功记录';
-    const date = new Date(time);
-    return `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
+  @Computed
+  get infoRow(): MonitorStationRow | null { return this.allRows.find(row => row.id === this.infoStationId) || null; }
+
+  @Monitor('allRows')
+  onInfoRowsChange(): void { if (this.showStationInfo && !this.infoRow) this.showStationInfo = false; }
+
+  private openStationInfo(id: number): void {
+    if (!this.allRows.some(row => row.id === id)) return;
+    this.infoStationId = id;
+    this.showStationInfo = true;
   }
 
   private elapsed(start: number, at: number = this.now): number { return Math.max(0, Math.floor((at - start) / 1000)); }
 
-  private rowStatus(row: MonitorStationRow): string {
-    if (row.paused) return '已暂停监控';
-    if (row.missing && !row.pending) return '站点不存在，请检查配置或手动重新核实';
-    const state = row.confirmed ? '已确认' : row.fetchedAt !== undefined ? (row.fromDisk ? '上次保存的历史记录' : '历史数据 · 不计入当前统计') : '状态未知';
-    return `${row.pending ? '查询中 · ' : row.failed ? '查询失败 · ' : ''}${state}`;
-  }
+  private rowStatus(row: MonitorStationRow): string { return MonitorPresentation.rowStatus(row); }
 
-  private detailStatus(outlet: MonitorOutletRow): string {
-    if (outlet.detailState === 'pending') return '详情查询中';
-    if (outlet.detailState === 'failed') return '详情查询失败';
-    if (outlet.detailState === 'stopped') return '详情查询已停止';
-    if (outlet.detailState === 'history') return '历史占用状态，详情未知';
-    if (outlet.detailState === 'success') return `详情获取于 ${this.timestamp(outlet.detailFetchedAt)}`;
-    return '详情未查询';
+  private showMonitorHelp(): void {
+    this.getUIContext().getPromptAction().showDialog({
+      title: '数据与占用详情',
+      message: '基础状态每 15 秒按需更新，超过 30 秒未确认转为历史，10 分钟后隐藏旧值。统计仅包含已确认的站点。\n\n占用详情需要主动查询；清单按点击时当前配置的已确认占用插座确定，不受搜索影响。未返回的数据不会显示为 0。',
+      buttons: [{ text: '知道了', color: this.theme.accent }]
+    }).catch((error: Error) => ErrorHandler.handle(error, 'ChargerMonitorUI.showMonitorHelp'));
   }
 
   private sortLabel(mode: number): string {
@@ -485,96 +496,123 @@ export struct ChargerMonitorUI {
   }
 
   @Builder
+  stationInfo() {
+    Scroll() {
+      Column({ space: 14 }) {
+        Text('站点信息').fontSize(20).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
+        if (this.infoRow) {
+        Text(this.infoRow!.name).fontSize(15).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary).width('100%')
+        Text(`原站名：${this.infoRow!.originalName}`).fontSize(14).fontColor(this.theme.textSecondary).width('100%')
+        Text(`站点 ID：${this.infoRow!.id}`).fontSize(14).fontColor(this.theme.textSecondary).width('100%')
+        Text(`基础状态：${MonitorPresentation.rowStatus(this.infoRow!) || '已确认'}`).fontSize(14).fontColor(this.theme.textSecondary).width('100%')
+        Text(`获取时间：${MonitorPresentation.clock(this.infoRow!.fetchedAt, true)}`).fontSize(14).fontColor(this.theme.textSecondary).width('100%')
+        if (this.infoRow!.note) Text(`备注：${this.infoRow!.note}`).fontSize(14).fontColor(this.theme.textSecondary).width('100%')
+        ForEach(this.infoRow!.outlets.filter(outlet => outlet.detailState === 'success'), (outlet: MonitorOutletRow) => {
+          Text(`插座${outlet.serial} 详情：${MonitorPresentation.clock(outlet.detailFetchedAt, true)}`).fontSize(12).fontColor(this.theme.textSecondary).width('100%')
+        }, (outlet: MonitorOutletRow) => outlet.renderKey)
+        Text('这里只展示已有记录，打开面板不会刷新或查询详情。').fontSize(12).fontColor(this.theme.textTertiary).width('100%')
+        Button('管理配置').height(40).fontSize(14).onClick(() => { this.showStationInfo = false; this.onManageConfig(this.currentConfig?.id || ''); })
+        }
+      }.width('100%').padding({ left: 20, right: 20, top: 24, bottom: 36 }).alignItems(HorizontalAlign.Start)
+    }.width('100%').scrollBar(BarState.Off)
+  }
+
+  @Builder
   overview() {
-    Column({ space: 6 }) {
+    Column({ space: 4 }) {
       Row({ space: 8 }) {
-        Text('基础状态').fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary).layoutWeight(1)
-        Button(this.refreshCooldown > 0 ? `${Math.ceil(this.refreshCooldown / 1000)}s` : this.isFetching ? '查询中' : '刷新')
-          .id('monitorRefreshButton').height(36).fontSize(13).backgroundColor(this.theme.accent).fontColor(Color.White)
+        Circle({ width: 8, height: 8 }).foregroundColor(!this.networkOnline || !this.stats.covered ? this.theme.textTertiary : this.stats.free > 0 ? this.theme.success : this.theme.error)
+        Text(MonitorPresentation.title(this.stats, this.isFetching, this.networkOnline, this.members.length))
+          .fontSize(15).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary).layoutWeight(1).maxLines(2)
+        Button() { SymbolGlyph($r('sys.symbol.info_circle')).fontSize(17).fontColor([this.theme.textSecondary]) }
+          .id('monitorInfoButton').type(ButtonType.Normal).width(40).height(40).backgroundColor(Color.Transparent)
+          .accessibilityText('数据与详情说明').onClick(() => this.showMonitorHelp())
+        Button(this.refreshCooldown > 0 ? `${Math.ceil(this.refreshCooldown / 1000)}s` : '刷新')
+          .id('monitorRefreshButton').height(40).fontSize(12).padding({ left: 12, right: 12 })
+          .backgroundColor(this.theme.accent).fontColor(this.theme.onAccent)
           .enabled(this.stats.active > 0 && this.networkOnline && (!this.isFetching || !this.baseManual) && !this.manualWaiting && this.refreshCooldown === 0)
-          .onClick(() => this.manualRefresh())
+          .accessibilityText('刷新当前配置基础状态').onClick(() => this.manualRefresh())
       }.width('100%')
-      Text(`已确认 ${this.stats.covered}/${this.stats.active} 站 · 当前统计${this.baseCacheHits ? ` · 本轮 ${this.baseCacheHits} 站使用缓存` : ''}`).id('monitorLoadSummary')
-        .fontSize(13).fontColor(this.theme.textSecondary).width('100%')
       Row() {
-        Column({ space: 3 }) {
+        Column({ space: 2 }) {
           Text(this.stats.covered > 0 ? this.stats.free.toString() : '—').id('monitorFreeCount').fontSize(28).fontWeight(FontWeight.Bold).fontColor(this.theme.success)
-          Text('空闲').fontSize(11).fontColor(this.theme.textSecondary)
+          Text('空闲').fontSize(12).fontColor(this.theme.textSecondary)
         }.layoutWeight(1)
-        Column({ space: 3 }) {
+        Divider().vertical(true).height(26).color(this.theme.border)
+        Column({ space: 2 }) {
           Text(this.stats.covered > 0 ? this.stats.occupied.toString() : '—').id('monitorOccupiedCount').fontSize(28).fontWeight(FontWeight.Bold).fontColor(this.theme.error)
-          Text('占用').fontSize(11).fontColor(this.theme.textSecondary)
+          Text('占用').fontSize(12).fontColor(this.theme.textSecondary)
         }.layoutWeight(1)
-        Column({ space: 3 }) {
-          Text(this.stats.covered > 0 ? this.stats.broken.toString() : '—').id('monitorBrokenCount').fontSize(28).fontWeight(FontWeight.Bold).fontColor(this.theme.textSecondary)
-          Text('故障').fontSize(11).fontColor(this.theme.textSecondary)
+        Divider().vertical(true).height(26).color(this.theme.border)
+        Column({ space: 2 }) {
+          Text(this.stats.covered > 0 ? this.stats.broken.toString() : '—').id('monitorBrokenCount').fontSize(28).fontWeight(FontWeight.Bold).fontColor(this.theme.warning)
+          Text('故障').fontSize(12).fontColor(this.theme.textSecondary)
         }.layoutWeight(1)
-        Column({ space: 3 }) {
+        Divider().vertical(true).height(26).color(this.theme.border)
+        Column({ space: 2 }) {
           Text(this.stats.covered > 0 ? this.stats.total.toString() : '—').id('monitorTotalCount').fontSize(28).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
-          Text('插座总数').fontSize(11).fontColor(this.theme.textSecondary)
+          Text('总计').fontSize(12).fontColor(this.theme.textSecondary)
         }.layoutWeight(1)
       }.width('100%')
-      if (!this.networkOnline) {
-        Text('网络不可用，已停止查询；恢复连接后补查到期或失败站点').fontSize(13).fontColor(this.theme.error).width('100%')
-      }
+      Text(MonitorPresentation.coverage(this.stats, this.allRows)).id('monitorLoadSummary').fontSize(12).fontColor(this.theme.textSecondary).width('100%')
+      if (!this.networkOnline) Text('网络未连接，恢复后自动核实历史数据').fontSize(12).fontColor(this.theme.warningText).width('100%')
       if (this.isFetching) {
-        Text(`基础状态已处理 ${this.baseCompleted}/${this.baseTotal} 站`).id('monitorLoadProgress').fontSize(13).fontColor(this.theme.textPrimary).width('100%')
+        Text(`正在更新 ${this.baseCompleted}/${this.baseTotal} 站`).id('monitorLoadProgress').fontSize(12).fontColor(this.theme.textSecondary).width('100%')
         Progress({ value: this.baseCompleted, total: Math.max(1, this.baseTotal), type: ProgressType.Linear })
-          .id('monitorLoadProgressBar').width('100%').color(this.theme.accent)
+          .id('monitorLoadProgressBar').width('100%').height(3).color(this.theme.accent)
+          .accessibilityText(`基础状态已处理 ${this.baseCompleted} 站，共 ${this.baseTotal} 站`)
         if (this.elapsed(this.baseStartedAt, this.now) >= 3) {
-          Text(this.elapsed(this.baseStartedAt, this.now) >= 10 ? `已等待 ${this.elapsed(this.baseStartedAt, this.now)} 秒；当前请求仍在等待网络响应` : '网络响应较慢，已获取站点会先显示')
+          Text(this.elapsed(this.baseStartedAt, this.now) >= 10 ? `已等待 ${this.elapsed(this.baseStartedAt, this.now)} 秒，正在等待网络响应` : '响应较慢，已获取的站点会先显示')
             .fontSize(12).fontColor(this.theme.textSecondary).width('100%')
         }
       }
-      if (this.failedIds.length) {
+      if (this.failedIds.length > 0) {
         Row({ space: 8 }) {
-          Text(`${this.failedIds.length} 站查询失败，历史数据保留至 10 分钟`).fontSize(12).fontColor(this.theme.error).layoutWeight(1)
-          Button('重试失败站').id('monitorRetryFailedButton').height(36).fontSize(12)
+          Text(`${this.failedIds.length} 站更新失败`).fontSize(12).fontColor(this.theme.errorText).layoutWeight(1)
+          Button('重试失败站').id('monitorRetryFailedButton').height(40).fontSize(12).backgroundColor(Color.Transparent).fontColor(this.theme.infoText)
             .enabled(this.networkOnline && !this.isFetching && this.refreshCooldown === 0 && this.manualFailedIds(this.now).length > 0)
             .onClick(() => this.retryFailedStations())
         }.width('100%')
       }
-      if (this.errorMessage) Text(this.errorMessage).fontSize(13).fontColor(this.theme.error).width('100%')
+      if (this.errorMessage) Text(this.errorMessage).fontSize(12).fontColor(this.theme.errorText).width('100%')
       if (this.configReadError) {
         Row({ space: 8 }) {
-          Text('配置读取失败，已有配置仍保留').fontSize(13).fontColor(this.theme.error).layoutWeight(1)
-          Button('重试读取').height(36).onClick(() => this.loadConfigs())
+          Text('配置读取失败').fontSize(12).fontColor(this.theme.errorText).layoutWeight(1)
+          Button('重新读取').height(40).fontSize(12).onClick(() => this.loadConfigs())
         }.width('100%')
       }
-    }.width('100%').padding(12).backgroundColor(this.theme.cardBackground).borderRadius(20)
+    }.width('100%').padding({ left: 12, right: 12, top: 6, bottom: 10 }).backgroundColor(this.theme.cardBackground).borderRadius(16)
   }
 
   @Builder
-  detailOverview() {
-    Column({ space: 6 }) {
-      Row({ space: 8 }) {
-        Text('占用详情').fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary).layoutWeight(1)
-        Button(`查询占用详情（${this.stats.occupied}）`).id('detailFetchButton').height(36).fontSize(12)
-          .backgroundColor(this.theme.secondaryBackground).fontColor(this.theme.accent)
-          .enabled(this.stats.occupied > 0 && !this.detailsRunning && this.networkOnline)
-          .onClick(() => this.fetchDetails())
-      }.width('100%')
-      if (this.detailsRunning) Text('查询当前配置的已确认占用插座，基础状态仍会自动刷新').fontSize(12).fontColor(this.theme.textSecondary).width('100%')
-      if (this.detailTotal > 0) {
-        Text(`详情已处理 ${this.detailCompleted}/${this.detailTotal} · 成功 ${this.detailSucceeded} · 失败 ${this.detailFailed} · 已失效 ${this.detailSkipped}`)
-          .id('detailLoadProgress').fontSize(13).fontColor(this.theme.textPrimary).width('100%')
-        Progress({ value: this.detailCompleted, total: Math.max(1, this.detailTotal), type: ProgressType.Linear })
-          .id('detailLoadProgressBar').width('100%').color(this.theme.accent)
-      }
-      if (this.detailsRunning) {
-        Row({ space: 8 }) {
-          Text(this.elapsed(this.detailStartedAt, this.now) >= 10 ? `已等待 ${this.elapsed(this.detailStartedAt, this.now)} 秒，可停止本轮查询` :
-            this.elapsed(this.detailStartedAt, this.now) >= 3 ? '详情响应较慢，可继续等待或停止' : '正在查询本轮占用详情')
-            .fontSize(12).fontColor(this.theme.textSecondary).layoutWeight(1)
-          Button('停止查询').id('detailStopButton').height(36).fontSize(12).onClick(() => this.stopDetails())
-        }.width('100%')
-      }
-      if (this.retryableDetailTargets(this.allRows).length > 0 && !this.detailsRunning) {
-        Button(`重试失败详情（${this.retryableDetailTargets(this.allRows).length}）`).id('detailRetryButton').height(36).fontSize(12)
-          .enabled(this.networkOnline).onClick(() => this.fetchDetails(true))
-      }
-      if (this.detailMessage) Text(this.detailMessage).fontSize(12).fontColor(this.theme.textSecondary).width('100%')
-    }.width('100%').padding(12).backgroundColor(this.theme.cardBackground).borderRadius(20)
+  detailProgress() {
+    if (MonitorPresentation.summaryVisible(this.detailsRunning, this.retryableDetailTargets(this.allRows).length, this.detailSummaryUntil, this.now)) {
+      Column({ space: 4 }) {
+        if (this.detailsRunning) {
+          Row({ space: 8 }) {
+            Text(`详情 ${this.detailCompleted}/${this.detailTotal}${this.detailFailed ? ' · ' + this.detailFailed + ' 项失败' : ''}`)
+              .id('detailLoadProgress').fontSize(12).fontColor(this.theme.textSecondary).layoutWeight(1)
+            Button('停止').id('detailStopButton').height(40).fontSize(12).backgroundColor(Color.Transparent).fontColor(this.theme.infoText)
+              .accessibilityText('停止本轮详情查询').onClick(() => this.stopDetails())
+          }.width('100%')
+          Progress({ value: this.detailCompleted, total: Math.max(1, this.detailTotal), type: ProgressType.Linear })
+            .id('detailLoadProgressBar').width('100%').height(3).color(this.theme.accent)
+            .accessibilityText(`详情已处理 ${this.detailCompleted} 项，共 ${this.detailTotal} 项`)
+          if (this.elapsed(this.detailStartedAt, this.now) >= 3) {
+            Text(this.elapsed(this.detailStartedAt, this.now) >= 10 ? `已等待 ${this.elapsed(this.detailStartedAt, this.now)} 秒，可继续等待或停止` : '详情响应较慢，可继续等待或停止')
+              .fontSize(12).fontColor(this.theme.textSecondary).width('100%')
+          }
+        } else {
+          Row({ space: 8 }) {
+            Text(this.detailMessage).id('detailSummary').fontSize(12).fontColor(this.retryableDetailTargets(this.allRows).length ? this.theme.warningText : this.theme.textSecondary).layoutWeight(1)
+            if (this.retryableDetailTargets(this.allRows).length > 0) {
+              Button(`重试 ${this.retryableDetailTargets(this.allRows).length} 项`).id('detailRetryButton').height(40).fontSize(12)
+                .backgroundColor(Color.Transparent).fontColor(this.theme.infoText).enabled(this.networkOnline).onClick(() => this.fetchDetails(true))
+            }
+          }.width('100%')
+        }
+      }.width('100%').padding({ left: 12, right: 12, top: 4, bottom: 4 }).backgroundColor(this.theme.cardBackground).borderRadius(12)
+    }
   }
 
   @Builder
@@ -583,8 +621,8 @@ export struct ChargerMonitorUI {
       Scroll() {
         Row({ space: 8 }) {
           ForEach(this.configs, (config: ChargerConfig) => {
-            Button(config.name).height(34).fontSize(12)
-              .fontColor(this.currentConfig?.id === config.id ? Color.White : this.theme.textPrimary)
+            Button(config.name).height(40).fontSize(12).padding({ left: 14, right: 14 })
+              .fontColor(this.currentConfig?.id === config.id ? this.theme.onAccent : this.theme.textPrimary)
               .backgroundColor(this.currentConfig?.id === config.id ? this.theme.accent : this.theme.secondaryBackground)
               .onClick(async () => {
                 if (this.currentConfig?.id === config.id) return;
@@ -594,49 +632,57 @@ export struct ChargerMonitorUI {
           }, (config: ChargerConfig) => `${config.id}/${config.name}/${this.currentConfig?.id === config.id}`)
         }
       }.layoutWeight(1).scrollable(ScrollDirection.Horizontal).scrollBar(BarState.Off)
-      Button('管理').height(34).fontSize(12).backgroundColor(Color.Transparent).fontColor(this.theme.accent)
+      Button('管理').height(40).fontSize(12).backgroundColor(Color.Transparent).fontColor(this.theme.infoText)
         .accessibilityText('管理当前站点配置').onClick(() => this.onManageConfig(this.currentConfig?.id || ''))
     }.width('100%')
   }
 
-
   build() {
     Column() {
       Refresh({ refreshing: $$this.isRefreshing }) {
-        List({ space: 10 }) {
+        List({ space: 8 }) {
           ListItem() {
-            Column({ space: 10 }) {
+            Column({ space: 8 }) {
               this.overview()
               this.configurationChips()
-              if (this.stats.active > 0) this.detailOverview()
-              Row({ space: 8 }) {
-                TextInput({ placeholder: '搜索别名、原站名、备注或 ID', text: this.searchInputText })
-                  .layoutWeight(1).height(40).fontColor(this.theme.textPrimary).backgroundColor(this.theme.secondaryBackground)
+              Row({ space: 6 }) {
+                TextInput({ placeholder: '搜索站点', text: this.searchInputText }).id('monitorSearchInput')
+                  .layoutWeight(1).height(40).fontSize(13).borderRadius(10).fontColor(this.theme.textPrimary).backgroundColor(this.theme.secondaryBackground)
                   .placeholderColor(this.theme.textSecondary).onChange((value: string) => this.onSearchInput(value))
+                  .accessibilityText('搜索别名、原站名、备注或站点ID')
                   .onSubmit(() => { if (this.searchTimer !== -1) clearTimeout(this.searchTimer); this.searchText = this.searchInputText; })
-                Button(this.sortLabel(this.sortMode)).height(40).fontSize(12).fontColor(this.theme.textPrimary).backgroundColor(this.theme.secondaryBackground)
+                Button() { SymbolGlyph($r('sys.symbol.sort')).fontSize(18).fontColor([this.theme.textSecondary]) }
+                  .id('monitorSortButton').width(40).height(40).type(ButtonType.Normal).borderRadius(10).backgroundColor(this.theme.secondaryBackground)
+                  .accessibilityText(`排序：${this.sortLabel(this.sortMode)}`)
                   .bindMenu(this.showSortMenu, this.sortMenu(), { placement: Placement.BottomRight, onDisappear: () => { this.showSortMenu = false; } })
                   .onClick(() => { this.showSortMenu = !this.showSortMenu; })
+                if (this.stats.active > 0) {
+                  Button(`详情 ${this.stats.occupied}`).id('detailFetchButton').height(40).fontSize(12).padding({ left: 10, right: 10 })
+                    .backgroundColor(this.theme.accent).fontColor(this.theme.onAccent)
+                    .enabled(this.stats.occupied > 0 && !this.detailsRunning && this.networkOnline)
+                    .accessibilityText(`查询当前配置 ${this.stats.occupied} 个已确认占用插座的详情`)
+                    .onClick(() => this.fetchDetails())
+                }
               }.width('100%')
+              this.detailProgress()
               if (this.members.length === 0) {
-                Column({ space: 12 }) {
+                Column({ space: 8 }) {
                   Text(this.currentConfig ? '本配置还没有站点' : '暂无配置').fontColor(this.theme.textPrimary)
-                  Button(this.currentConfig ? '添加站点' : '增加配置').onClick(() => {
+                  Button(this.currentConfig ? '添加站点' : '增加配置').height(40).fontSize(14).onClick(() => {
                     if (this.currentConfig) this.onAddStations(this.currentConfig);
                     else this.onManageConfig('');
                   })
-                }.width('100%').padding(24)
+                }.width('100%').padding(20)
               } else if (this.stats.active === 0) {
-                Column({ space: 10 }) {
+                Column({ space: 8 }) {
                   Text('本配置的站点已全部暂停').fontColor(this.theme.textPrimary)
-                  Text('暂停期间不查询基础状态或占用详情').fontSize(13).fontColor(this.theme.textSecondary)
-                  Button('管理站点').onClick(() => this.onManageConfig(this.currentConfig?.id || ''))
+                  Button('管理站点').height(40).fontSize(14).onClick(() => this.onManageConfig(this.currentConfig?.id || ''))
                 }.width('100%').padding(16)
               }
               if (this.members.length > 0 && this.filteredRows.length === 0) {
-                Column({ space: 10 }) {
+                Column({ space: 8 }) {
                   Text('没有匹配的站点').fontColor(this.theme.textSecondary)
-                  Button('清除搜索').onClick(() => { if (this.searchTimer !== -1) clearTimeout(this.searchTimer); this.searchInputText = ''; this.searchText = ''; })
+                  Button('清除搜索').height(40).fontSize(14).onClick(() => { if (this.searchTimer !== -1) clearTimeout(this.searchTimer); this.searchInputText = ''; this.searchText = ''; })
                 }.width('100%').padding(16)
               }
             }.width('100%')
@@ -646,18 +692,20 @@ export struct ChargerMonitorUI {
               MonitorStationCardUI({ row: row.item, theme: this.theme, now: this.now, isFetching: this.isFetching,
                 networkOnline: this.networkOnline, refreshCooldown: this.refreshCooldown,
                 onRetry: (id: number) => { this.manualRefresh('station', [id]); },
+                onInfo: (id: number) => { this.openStationInfo(id); },
                 onManage: () => { this.onManageConfig(this.currentConfig?.id || ''); } })
             }
           }).key((row: MonitorStationRow) => row.renderKey).virtualScroll()
           ListItem() { Column().height(100).width('100%') }
-        }.width('100%').height('100%').padding({ left: 16, right: 16, top: 12 })
+        }.width('100%').height('100%').padding({ left: 16, right: 16, top: 8 })
           .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true }).scrollBar(BarState.Auto)
       }.width('100%').layoutWeight(1).pullToRefresh(true).onRefreshing(() => this.manualRefresh('pull'))
     }.width('100%').height('100%').backgroundColor(this.theme.background)
+      .bindSheet($$this.showStationInfo, this.stationInfo(), { height: SheetSize.MEDIUM, showClose: true, dragBar: true, backgroundColor: this.theme.cardBackground })
   }
 }
 
-// 虚拟列表复用时通过 @Param 接收最新整行，避免 Builder 按值参数捕获初次快照。
+// 虚拟列表复用时通过 @Param 接收最新整行，信息面板只读取此刻的展示快照。
 @ComponentV2
 struct MonitorStationCardUI {
   @Param row: MonitorStationRow = { id: 0, name: '', originalName: '', note: '', order: 0,
@@ -669,76 +717,98 @@ struct MonitorStationCardUI {
   @Param refreshCooldown: number = 0;
   @Event onRetry: (id: number) => void = () => {};
   @Event onManage: () => void = () => {};
+  @Event onInfo: (id: number) => void = () => {};
+  @Local showMenu: boolean = false;
+  private menuStationId: number = 0;
 
-  private timestamp(time: number | undefined): string {
-    if (time === undefined) return '尚无成功记录';
-    const date = new Date(time);
-    return `${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
+  @Monitor('row')
+  onRowChange() { if (this.showMenu && this.menuStationId !== this.row.id) this.showMenu = false; }
+  aboutToDisappear() { this.showMenu = false; }
+
+  private showMore(): void { this.menuStationId = this.row.id; this.showMenu = true; }
+
+  private selectMore(action: string): void {
+    this.showMenu = false;
+    if (this.menuStationId !== this.row.id) return;
+    if (action === 'info') this.onInfo(this.row.id);
+    else if (action === 'refresh' && this.canRetry(this.row, this.now)) this.onRetry(this.row.id);
+    else if (action === 'manage') this.onManage();
   }
 
-  private rowStatus(row: MonitorStationRow): string {
-    if (row.paused) return '已暂停监控';
-    if (row.missing && !row.pending) return '站点不存在，请检查配置或手动重新核实';
-    const state = row.confirmed ? '已确认' : row.fetchedAt !== undefined ? (row.fromDisk ? '上次保存的历史记录' : '历史数据 · 不计入当前统计') : '状态未知';
-    return `${row.pending ? '查询中 · ' : row.failed ? '查询失败 · ' : ''}${state}`;
+  private canRetry(row: MonitorStationRow, at: number): boolean {
+    return !row.paused && !this.isFetching && this.networkOnline && this.refreshCooldown === 0 && (!row.manualRetryAt || row.manualRetryAt <= at);
   }
 
-  private detailStatus(outlet: MonitorOutletRow): string {
-    if (outlet.detailState === 'pending') return '详情查询中';
-    if (outlet.detailState === 'failed') return '详情查询失败';
-    if (outlet.detailState === 'stopped') return '详情查询已停止';
-    if (outlet.detailState === 'history') return '历史占用状态，详情未知';
-    if (outlet.detailState === 'success') return `详情获取于 ${this.timestamp(outlet.detailFetchedAt)}`;
-    return '详情未查询';
+  private badgeSurface(tone: string): string { return tone === 'neutral' ? this.theme.secondaryBackground : tone === 'info' ? this.theme.accent : tone === 'success' ? this.theme.success : this.theme.warning; }
+  private badgeText(tone: string): string { return tone === 'neutral' ? this.theme.textSecondary : '#ffffff'; }
+
+  @Builder
+  moreMenu() {
+    Column() {
+      Button('站点信息').height(44).width('100%').fontSize(14).backgroundColor(Color.Transparent).fontColor(this.theme.textPrimary)
+        .onClick(() => this.selectMore('info'))
+      Button('刷新本站状态').id(`stationMenuRefresh-${this.row.id}`).height(44).width('100%').fontSize(14)
+        .backgroundColor(Color.Transparent).fontColor(this.theme.infoText).enabled(this.canRetry(this.row, this.now))
+        .onClick(() => this.selectMore('refresh'))
+      Button('管理配置').height(44).width('100%').fontSize(14).backgroundColor(Color.Transparent).fontColor(this.theme.textPrimary)
+        .onClick(() => this.selectMore('manage'))
+    }.width(210).padding(4)
   }
 
   @Builder
   outletRow(outlet: MonitorOutletRow) {
-    Column({ space: 4 }) {
-      Row({ space: 8 }) {
-        Circle({ width: 8, height: 8 }).foregroundColor(outlet.status === OutletStatus.FREE ? this.theme.success : outlet.status === OutletStatus.OCCUPIED ? this.theme.error : this.theme.textTertiary)
-        Text(`插座${outlet.serial}`).fontSize(14).fontColor(this.theme.textPrimary).layoutWeight(1)
-        Text(outlet.status === OutletStatus.FREE ? '空闲' : outlet.status === OutletStatus.OCCUPIED ? '占用' : '故障')
-          .fontSize(13).fontColor(outlet.status === OutletStatus.FREE ? this.theme.success : this.theme.textSecondary)
-      }.width('100%')
-      if (outlet.status === OutletStatus.OCCUPIED) {
-        Text(`功率 ${outlet.power_w === undefined ? '—' : outlet.power_w + 'W'} · 费用 ${outlet.fee === undefined ? '—' : '¥' + outlet.fee.toFixed(2)} · 时长 ${outlet.used_min === undefined ? '—' : outlet.used_min + '分钟'}`)
-          .fontSize(12).fontColor(this.theme.textSecondary).width('100%')
-        Text(this.detailStatus(outlet)).fontSize(11).fontColor(outlet.detailState === 'failed' ? this.theme.error : this.theme.textTertiary).width('100%')
-      }
-    }.padding({ left: 16, right: 16, top: 8, bottom: 8 }).width('100%')
+    Row({ space: 8 }) {
+      Circle({ width: 8, height: 8 }).foregroundColor(outlet.status === OutletStatus.FREE ? this.theme.success : outlet.status === OutletStatus.OCCUPIED ? this.theme.error : this.theme.warning)
+        .opacity(this.row.confirmed ? 1 : 0.45)
+      Text(`插座${outlet.serial}`).fontSize(13).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
+      Flex({ direction: FlexDirection.Row, wrap: FlexWrap.Wrap, justifyContent: FlexAlign.End, alignItems: ItemAlign.Center }) {
+        if (MonitorPresentation.badges(outlet).length > 0) {
+          ForEach(MonitorPresentation.badges(outlet), (badge: MonitorBadge) => {
+            Text(badge.text).fontSize(11).fontWeight(FontWeight.Medium).fontColor(this.badgeText(badge.tone)).backgroundColor(this.badgeSurface(badge.tone))
+              .padding({ left: 6, right: 6, top: 2, bottom: 2 }).borderRadius(6).margin({ left: 4, top: 1, bottom: 1 })
+          }, (badge: MonitorBadge) => badge.tone + badge.text)
+        } else {
+          Text(MonitorPresentation.outletStatus(outlet, this.row.confirmed)).fontSize(12)
+            .fontColor(outlet.status === OutletStatus.FREE && this.row.confirmed ? '#ffffff' : outlet.detailState === 'failed' ? this.theme.warningText : this.theme.textSecondary)
+            .backgroundColor(outlet.status === OutletStatus.FREE && this.row.confirmed ? this.theme.success : Color.Transparent)
+            .padding({ left: 8, right: 8, top: 2, bottom: 2 }).borderRadius(6)
+        }
+      }.layoutWeight(1)
+    }.width('100%').constraintSize({ minHeight: 30 }).padding({ left: 12, right: 12, top: 3, bottom: 3 })
   }
 
   build() {
-    Column({ space: 8 }) {
-      Row({ space: 8 }) {
-        Column({ space: 4 }) {
-          Text(this.row.name).fontSize(17).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
-          Text(`ID ${this.row.id}${this.row.name !== this.row.originalName ? ' · ' + this.row.originalName : ''}`).fontSize(11).fontColor(this.theme.textTertiary)
-          if (this.row.note) Text(this.row.note).fontSize(12).fontColor(this.theme.textSecondary)
-        }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-        if (!this.row.paused) {
-          Button(this.row.pending ? '查询中' : this.row.manualRetryAt && this.row.manualRetryAt > this.now ? `限流等待 ${Math.ceil((this.row.manualRetryAt - this.now) / 1000)}s` : this.row.missing ? '重新核实' : this.row.failed ? '重试' : '刷新')
-            .id(`stationRetry-${this.row.id}`).height(36).fontSize(12).backgroundColor(Color.Transparent).fontColor(this.theme.accent)
-            .enabled(!this.isFetching && this.networkOnline && this.refreshCooldown === 0 && (!this.row.manualRetryAt || this.row.manualRetryAt <= this.now))
-            .onClick(() => this.onRetry(this.row.id))
+    Column({ space: 0 }) {
+      Row({ space: 6 }) {
+        Text(this.row.name).fontSize(15).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary).layoutWeight(1).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+          .onClick(() => this.onInfo(this.row.id)).accessibilityText(`站点信息，${this.row.name}`)
+        Row({ space: 4 }) {
+          Circle({ width: 6, height: 6 }).foregroundColor(!this.row.confirmed ? this.theme.textTertiary : (this.row.freeCount ?? 0) > 0 ? this.theme.success : this.theme.error)
+          Text(this.row.confirmed ? `${this.row.freeCount}/${this.row.outlets.length}` : '—/—').fontSize(14).fontWeight(FontWeight.Medium)
+            .fontColor(!this.row.confirmed ? this.theme.textSecondary : (this.row.freeCount ?? 0) > 0 ? this.theme.successText : this.theme.errorText)
+        }.padding({ left: 7, right: 7, top: 3, bottom: 3 }).borderRadius(8)
+          .backgroundColor(!this.row.confirmed ? this.theme.secondaryBackground : (this.row.freeCount ?? 0) > 0 ? this.theme.successSurface : this.theme.errorSurface)
+          .accessibilityText(this.row.confirmed ? `空闲 ${this.row.freeCount} 个，共 ${this.row.outlets.length} 个插座` : '当前插座数未确认')
+        if (this.row.failed || this.row.missing) {
+          Button(this.row.manualRetryAt && this.row.manualRetryAt > this.now ? `${Math.ceil((this.row.manualRetryAt - this.now) / 1000)}s` : '重试')
+            .id(`stationRetry-${this.row.id}`).height(40).fontSize(12).backgroundColor(Color.Transparent).fontColor(this.theme.infoText)
+            .enabled(this.canRetry(this.row, this.now)).onClick(() => this.onRetry(this.row.id))
         }
-      }.width('100%').padding({ left: 16, right: 16, top: 16 })
-      Text(this.rowStatus(this.row)).fontSize(12).fontColor(this.row.confirmed ? this.theme.success : this.row.failed ? this.theme.error : this.theme.textSecondary)
-        .width('100%').padding({ left: 16, right: 16 })
-      if (this.row.missing) {
-        Button('管理此配置的站点').height(32).fontSize(12).backgroundColor(Color.Transparent).fontColor(this.theme.accent)
-          .onClick(() => this.onManage())
+        Button() { Text('⋯').fontSize(24).fontColor(this.theme.textSecondary) }
+          .id(`stationMore-${this.row.id}`).type(ButtonType.Normal).width(40).height(40).backgroundColor(Color.Transparent)
+          .accessibilityText(`${this.row.name}，更多操作`).onClick(() => this.showMore())
+          .bindMenu(this.showMenu, this.moreMenu(), { placement: Placement.BottomRight, onDisappear: () => { this.showMenu = false; } })
+      }.width('100%').padding({ left: 12, right: 4, top: 6 })
+      Text(MonitorPresentation.rowCaption(this.row)).fontSize(12).fontColor(this.theme.textSecondary).width('100%').padding({ left: 12, right: 12, bottom: 6 })
+      if (this.row.note) Text(this.row.note).fontSize(12).fontColor(this.theme.textSecondary).width('100%').padding({ left: 12, right: 12, bottom: 6 }).maxLines(2)
+      if (MonitorPresentation.rowStatus(this.row)) {
+        Text(MonitorPresentation.rowStatus(this.row)).fontSize(12).fontColor(this.row.failed || this.row.missing ? this.theme.warningText : this.theme.textSecondary)
+          .width('100%').padding({ left: 12, right: 12, bottom: 6 })
       }
-      if (!this.row.paused) {
-        Text(this.row.fetchedAt === undefined ? '从未成功获取：空闲 — / 总数 —' :
-          `${this.row.confirmed ? '状态获取于' : '历史记录于'} ${this.timestamp(this.row.fetchedAt)} · 空闲 ${this.row.freeCount ?? '—'} / 总数 ${this.row.outlets.length}`)
-          .fontSize(11).fontColor(this.theme.textTertiary).width('100%').padding({ left: 16, right: 16 })
-        if (this.row.outlets.length > 0) {
-          Divider().color(this.theme.border).margin({ left: 16, right: 16 })
-          ForEach(this.row.outlets, (outlet: MonitorOutletRow) => { this.outletRow(outlet) }, (outlet: MonitorOutletRow) => outlet.renderKey)
-        }
+      if (this.row.outlets.length > 0) {
+        Divider().color(this.theme.border).margin({ left: 12, right: 12, bottom: 3 })
+        ForEach(this.row.outlets, (outlet: MonitorOutletRow) => { this.outletRow(outlet) }, (outlet: MonitorOutletRow) => outlet.renderKey)
       }
-    }.id(`stationCard-${this.row.id}`).width('100%').padding({ bottom: 12 }).backgroundColor(this.theme.cardBackground).borderRadius(20)
+    }.id(`stationCard-${this.row.id}`).width('100%').padding({ bottom: 6 }).backgroundColor(this.theme.cardBackground).borderRadius(16)
   }
 }

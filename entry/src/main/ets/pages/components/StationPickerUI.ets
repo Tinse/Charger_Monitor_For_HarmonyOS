@@ -126,7 +126,7 @@ export struct StationPickerUI {
     if (this.isLoading || this.isSaving) return;
     try {
       const decision = await this.getUIContext().getPromptAction().showDialog({
-        title: '查找附近站点', message: '校园位置使用清水河校区坐标，设备位置使用本机定位。',
+        title: '查找附近站点', message: '校园位置使用清水河校区坐标，设备位置使用本机定位。所选坐标将发送至 wemp.issks.com，用于查询附近站点。',
         buttons: [{ text: '取消', color: this.theme.textSecondary }, { text: '校园位置', color: this.theme.accent },
           { text: '设备位置', color: this.theme.accent }]
       });
@@ -387,8 +387,8 @@ export struct StationPickerUI {
       title: '需要开启定位服务',
       message: '请前往系统设置开启位置服务，以获取附近的充电站信息',
       buttons: [
-        { text: '取消', color: '#8e8e93' },
-        { text: '去设置', color: '#30d158' }
+        { text: '取消', color: this.theme.textSecondary },
+        { text: '去设置', color: this.theme.accent }
       ]
     }).then((data: promptAction.ShowDialogSuccessResponse) => {
       if (data.index === 1) {
@@ -400,6 +400,41 @@ export struct StationPickerUI {
   }
 
 
+  @Builder
+  resultControls() {
+    Column({ space: 4 }) {
+      Flex({ wrap: FlexWrap.Wrap, alignItems: ItemAlign.Center }) {
+        ForEach(['全部', '主楼C区', '商业街'], (keyword: string) => {
+          Button(keyword).constraintSize({ minHeight: 40 }).fontSize(14).margin({ right: 6, bottom: 2 })
+            .backgroundColor(this.searchText === (keyword === '全部' ? '' : keyword) ? this.theme.infoSurface : this.theme.cardBackground)
+            .fontColor(this.searchText === (keyword === '全部' ? '' : keyword) ? this.theme.infoText : this.theme.textPrimary)
+            .onClick(() => { this.applyKeyword(keyword === '全部' ? '' : keyword); })
+        })
+      }.width('100%')
+      Row() {
+        Text(`${this.filteredStations.length} 个结果`).fontSize(12).fontColor(this.theme.textSecondary).layoutWeight(1)
+        if (this.mode !== 'replace') {
+          Button('勾选结果').constraintSize({ minHeight: 40 }).fontSize(14).backgroundColor(Color.Transparent).fontColor(this.theme.accent)
+            .enabled(!this.isSaving && this.filteredStations.some(station => StationSelection.canSelect(station.stationId, this.mode, this.existingIds)))
+            .onClick(() => this.selectAllStations())
+          Button('取消结果').constraintSize({ minHeight: 40 }).fontSize(14).backgroundColor(Color.Transparent).fontColor(this.theme.textSecondary)
+            .enabled(!this.isSaving && this.filteredStations.some(station => this.selectedIds.includes(station.stationId)))
+            .onClick(() => this.deselectAllStations())
+        }
+      }.width('100%')
+      Row() {
+        if (this.isLoading) {
+          LoadingProgress().width(18).height(18).margin({ right: 6 })
+        } else {
+          Button('查找附近').fontSize(14).constraintSize({ minHeight: 40 })
+            .backgroundColor(Color.Transparent).fontColor(this.theme.accent)
+            .onClick(() => this.chooseLocation())
+        }
+        Text(this.locationStatus).id('nearbyLoadStatus').fontSize(12).fontColor(this.theme.textSecondary).layoutWeight(1).maxLines(2)
+      }.width('100%')
+    }.width('100%')
+  }
+
   build() {
     Column({ space: 8 }) {
       if (this.mode === 'add' || this.mode === 'replace') {
@@ -408,51 +443,40 @@ export struct StationPickerUI {
       } else {
         TextInput({ placeholder: '配置名称，如：下课后的充电站', text: this.configName })
           .onChange((value: string) => { this.configName = value; this.nameError = ''; })
-          .enabled(!this.isSaving).maxLength(24).height(44).width('100%').borderRadius(16)
-          .backgroundColor(this.theme.cardBackground).fontColor(this.theme.textPrimary)
+          .enabled(!this.isSaving).maxLength(24).constraintSize({ minHeight: 44 }).fontSize(14).width('100%').borderRadius(16)
+          .backgroundColor(this.theme.cardBackground).fontColor(this.theme.textPrimary).placeholderColor(this.theme.textSecondary)
           .id('configNameInput')
-        if (this.nameError) { Text(this.nameError).fontSize(13).fontColor(this.theme.error) }
+        if (this.nameError) { Text(this.nameError).fontSize(12).fontColor(this.theme.errorText) }
       }
       SearchBar({ placeholder: '搜索名称、地址或站点ID', value: this.searchInputText, theme: this.theme,
         onChangeCallback: (value: string) => { this.onSearchInput(value); },
         onSubmitCallback: () => { this.applyKeyword(this.searchInputText); }
       })
-      Row({ space: 8 }) {
-        ForEach(['全部', '主楼C区', '商业街'], (keyword: string) => {
-          Button(keyword).height(32).fontSize(13)
-            .backgroundColor(this.searchText === (keyword === '全部' ? '' : keyword) ? this.theme.accent : this.theme.cardBackground)
-            .fontColor(this.searchText === (keyword === '全部' ? '' : keyword) ? '#ffffff' : this.theme.textPrimary)
-            .onClick(() => { this.applyKeyword(keyword === '全部' ? '' : keyword); })
-        })
-      }.width('100%')
-      Row() {
-        Text(`${this.filteredStations.length} 个结果`).fontSize(13).fontColor(this.theme.textSecondary).layoutWeight(1)
-        if (this.mode !== 'replace') {
-          Button('勾选结果').height(36).fontSize(13).backgroundColor(Color.Transparent).fontColor(this.theme.accent)
-            .enabled(!this.isSaving && this.filteredStations.some(station => StationSelection.canSelect(station.stationId, this.mode, this.existingIds)))
-            .onClick(() => this.selectAllStations())
-          Button('取消结果').height(36).fontSize(13).backgroundColor(Color.Transparent).fontColor(this.theme.textSecondary)
-            .enabled(!this.isSaving && this.filteredStations.some(station => this.selectedIds.includes(station.stationId)))
-            .onClick(() => this.deselectAllStations())
-        }
-      }.width('100%')
-      if (this.isLoading && this.allStations.length === 0) {
-        Column({ space: 12 }) {
-          LoadingProgress().width(32).height(32)
-          Text('正在查找附近站点').fontSize(14).fontColor(this.theme.textSecondary)
-        }.layoutWeight(1).justifyContent(FlexAlign.Center)
-      } else if (this.filteredStations.length === 0) {
-        Column({ space: 12 }) {
-          SymbolGlyph($r('sys.symbol.magnifyingglass')).fontSize(36).fontColor([this.theme.textSecondary])
-          Text(this.emptyTitle()).fontColor(this.theme.textPrimary)
-          Text(this.emptyDescription()).fontSize(13).fontColor(this.theme.textSecondary)
-          Button(this.hasAvailableCandidates() ? '清除筛选' : '重新查询候选站点').enabled(!this.isSaving && (this.hasAvailableCandidates() || !this.isLoading)).onClick(() => {
-            if (this.hasAvailableCandidates()) this.applyKeyword('');
-            else this.chooseLocation();
-          })
-        }.layoutWeight(1).justifyContent(FlexAlign.Center).width('100%')
-      } else {
-        List({ space: 8 }) {
+      List({ space: 8 }) {
+        ListItem() { this.resultControls() }
+        if (this.isLoading && this.allStations.length === 0) {
+          ListItem() {
+            Column({ space: 8 }) {
+              LoadingProgress().width(32).height(32)
+              Text('正在查找附近站点').fontSize(14).fontColor(this.theme.textSecondary)
+            }.width('100%').padding(16)
+          }
+        } else if (this.filteredStations.length === 0) {
+          ListItem() {
+            Column({ space: 8 }) {
+              SymbolGlyph($r('sys.symbol.magnifyingglass')).fontSize(36).fontColor([this.theme.textSecondary])
+              Text(this.emptyTitle()).fontSize(15).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
+              Text(this.emptyDescription()).fontSize(12).fontColor(this.theme.textSecondary)
+              Button(this.hasAvailableCandidates() ? '清除筛选' : '重新查询候选站点').constraintSize({ minHeight: 40 }).fontSize(14)
+                .backgroundColor(this.theme.infoSurface).fontColor(this.theme.infoText)
+                .enabled(!this.isSaving && (this.hasAvailableCandidates() || !this.isLoading))
+                .onClick(() => {
+                  if (this.hasAvailableCandidates()) this.applyKeyword('');
+                  else this.chooseLocation();
+                })
+            }.width('100%').padding(16)
+          }
+        } else {
           Repeat<StationBrief>(this.filteredStations).each((row: RepeatItem<StationBrief>) => {
             ListItem() {
               Row({ space: 12 }) {
@@ -470,49 +494,40 @@ export struct StationPickerUI {
                   .enabled(!this.isSaving && !this.isJoined(row.item))
                   .onClick(() => this.setStationSelected(row.item.stationId, this.mode === 'replace' ? true : !this.selectedIds.includes(row.item.stationId)))
                 if (this.isJoined(row.item)) {
-                  Text('已加入').fontSize(13).fontColor(this.theme.textSecondary)
+                  Text('已加入').fontSize(12).fontColor(this.theme.successText).backgroundColor(this.theme.successSurface)
+                    .padding({ left: 8, right: 8, top: 3, bottom: 3 }).borderRadius(8)
                 } else if (this.mode === 'replace') {
                   Radio({ value: row.item.stationId.toString(), group: 'replacement' })
                     .checked(this.selectedIds.includes(row.item.stationId)).enabled(!this.isSaving)
                     .accessibilityText(`选择替代站点：${row.item.stationName}，ID ${row.item.stationId}`)
-                    .width(22).height(22).onChange((checked: boolean) => this.setStationSelected(row.item.stationId, checked))
+                    .width(24).height(24).responseRegion({ x: -8, y: -8, width: 40, height: 40 }).onChange((checked: boolean) => this.setStationSelected(row.item.stationId, checked))
                 } else {
                   Checkbox({ name: row.item.stationName }).select(this.selectedIds.includes(row.item.stationId))
-                    .enabled(!this.isSaving).selectedColor(this.theme.accent).width(22).height(22)
+                    .enabled(!this.isSaving).selectedColor(this.theme.accent).width(24).height(24).responseRegion({ x: -8, y: -8, width: 40, height: 40 })
                     .accessibilityText(`选择站点：${this.stationDisplayName(row.item)}，ID ${row.item.stationId}`)
                     .onChange((checked: boolean) => this.setStationSelected(row.item.stationId, checked))
                 }
-              }.padding(16).width('100%').borderRadius(20).backgroundColor(this.theme.cardBackground)
+              }.padding({ left: 16, right: 16, top: 12, bottom: 12 }).width('100%').borderRadius(16).backgroundColor(this.theme.cardBackground)
             }
           }).key((station: StationBrief) => JSON.stringify(station)).virtualScroll()
-        }.layoutWeight(1).cachedCount(3).width('100%')
-      }
-      Text('附近查询将设备或默认校区坐标发送至 wemp.issks.com，仅用于查找附近站点。')
-        .fontSize(11).fontColor(this.theme.textSecondary).width('100%')
-      Row() {
-        if (this.isLoading) {
-          LoadingProgress().width(18).height(18).margin({ right: 6 })
-        } else {
-          Button('查找附近').fontSize(12).height(32)
-            .backgroundColor(Color.Transparent).fontColor(this.theme.accent)
-            .onClick(() => this.chooseLocation())
         }
-        Text(this.locationStatus).id('nearbyLoadStatus').fontSize(12).fontColor(this.theme.textSecondary).layoutWeight(1).maxLines(2)
+      }.layoutWeight(1).cachedCount(3).width('100%')
+      Row({ space: 8 }) {
         Button(this.showSelectedOnly ? '查看全部' : `已选 ${this.selectedIds.length}`)
-          .backgroundColor(Color.Transparent).fontColor(this.theme.accent).fontSize(13).height(32)
+          .backgroundColor(Color.Transparent).fontColor(this.theme.accent).fontSize(14).constraintSize({ minHeight: 40 })
           .onClick(() => {
             const showSelected = !this.showSelectedOnly;
             this.applyKeyword('');
             this.showSelectedOnly = showSelected;
             this.updateFilteredStations();
           })
+        Button(this.saveLabel())
+          .enabled(!this.isSaving && ((this.mode === 'add' || this.mode === 'replace') ?
+            this.selectedIds.length > 0 : this.configName.trim().length > 0))
+          .constraintSize({ minHeight: 44 }).layoutWeight(1).fontSize(14).labelStyle({ maxLines: 2 })
+          .backgroundColor(this.theme.accent).fontColor(this.theme.onAccent).onClick(() => this.saveConfig())
       }.width('100%')
-      Button(this.saveLabel())
-        .enabled(!this.isSaving && ((this.mode === 'add' || this.mode === 'replace') ?
-          this.selectedIds.length > 0 : this.configName.trim().length > 0))
-        .height(48).width('100%').backgroundColor(this.theme.accent).fontColor('#ffffff')
-        .onClick(() => this.saveConfig()).margin({ bottom: 12 })
-    }.width('100%').height('100%').padding({ left: 16, right: 16, top: 8, bottom: 8 })
+    }.width('100%').height('100%').padding({ left: 16, right: 16, top: 8, bottom: 12 })
       .backgroundColor(this.theme.background)
   }
 }

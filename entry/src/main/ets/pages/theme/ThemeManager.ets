@@ -24,8 +24,18 @@ export interface ThemeColors {
 
   // 强调色
   accent: string;               // 主强调色（蓝色）
+  onAccent: string;             // 实心主按钮前景
   success: string;              // 成功色（绿色）
   error: string;                // 错误色（红色）
+  warning: string;              // 警示圆点
+  infoSurface: string;
+  infoText: string;
+  successSurface: string;
+  successText: string;
+  warningSurface: string;
+  warningText: string;
+  errorSurface: string;
+  errorText: string;
 
   // 其他
   border: string;               // 边框色
@@ -42,8 +52,18 @@ const DARK_COLORS: ThemeColors = {
   textSecondary: '#a1a4aa',
   textTertiary: '#b4b4b4',
   accent: '#0a84ff',
+  onAccent: '#ffffff',
   success: '#30d158',
   error: '#ff453a',
+  warning: '#ffd60a',
+  infoSurface: 'rgba(10,132,255,0.15)',
+  infoText: '#0a84ff',
+  successSurface: 'rgba(48,209,88,0.15)',
+  successText: '#30d158',
+  warningSurface: 'rgba(255,214,10,0.15)',
+  warningText: '#ffd60a',
+  errorSurface: 'rgba(255,69,58,0.15)',
+  errorText: '#ff453a',
   border: '#3a3a3c',
   overlay: 'rgba(0,0,0,0.5)'
 };
@@ -58,8 +78,18 @@ const LIGHT_COLORS: ThemeColors = {
   textSecondary: '#737780',
   textTertiary: '#636366',
   accent: '#0a59f7',
+  onAccent: '#ffffff',
   success: '#34c759',
   error: '#ff3b30',
+  warning: '#ffd60a',
+  infoSurface: 'rgba(10,132,255,0.15)',
+  infoText: '#0a59f7',
+  successSurface: 'rgba(48,209,88,0.15)',
+  successText: '#34c759',
+  warningSurface: 'rgba(255,214,10,0.15)',
+  warningText: '#806000',
+  errorSurface: 'rgba(255,69,58,0.15)',
+  errorText: '#ff3b30',
   border: '#c6c6c8',
   overlay: 'rgba(0,0,0,0.3)'
 };

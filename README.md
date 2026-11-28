@@ -1,6 +1,6 @@
 # 充电不愁 · HarmonyOS 7
 
-最近发布 **1.9.0**（versionCode `1009000`）。[下载未签名 HAP](https://github.com/Tinse/Charger_Monitor_For_HarmonyOS/releases/tag/v1.9.0)
+最近发布 **1.9.1**（versionCode `1009001`）。[下载未签名 HAP](https://github.com/Tinse/Charger_Monitor_For_HarmonyOS/releases/tag/v1.9.1)
 
 面向电子科技大学充电场景的原生 ArkTS / ArkUI 应用。查看充电站插座状态、寻找附近站点、保存常用站点组合，并浏览内置校园地图。
 

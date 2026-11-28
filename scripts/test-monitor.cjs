@@ -20,6 +20,7 @@ function load(relative) {
 }
 const base = 'entry/src/main/ets/pages/';
 const { MonitorModel: M } = load(base + 'utils/MonitorModel.ets');
+const { MonitorPresentation: P } = load(base + 'utils/MonitorPresentation.ets');
 const { SORT_MODE: S } = load(base + 'ChargerModels.ets');
 const { ApiConfig } = load(base + 'ApiConfig.ets');
 const { RefreshGate } = load(base + 'utils/RefreshGate.ets');
@@ -67,12 +68,39 @@ assert.equal(rows()[0].outlets.length,0,'expired history hides all old values bu
 assert.equal(M.members({stations:{Alias:1},stationNames:{'1':'Original'}},{Alias:1})[0].originalName,'Original');
 assert.equal(M.stats(M.rows([member(1,true)],new Map(),new Map(),[],[],new Map())).active,0);
 
+// The presenter below supplies the actual UI labels and badge values.
+const complete={active:2,covered:2,total:8,free:0,occupied:8,broken:0};
+assert.equal(P.title(complete,false,true,2),'暂无空闲插座');
+assert.equal(P.title({...complete,covered:1},false,true,2),'部分站点已确认','partial coverage must never assert that the whole configuration has no free outlets');
+assert.equal(P.title({...complete,covered:1,free:1},false,true,2),'部分站点有空闲');
+assert.equal(P.title({...complete,covered:0},false,true,2),'站点状态待更新');
+assert.equal(P.title({...complete,covered:0},true,true,2),'正在获取站点状态');
+assert.equal(P.title({...complete,active:0,covered:0},false,true,2),'监控已暂停');
+assert.equal(P.title(complete,false,false,2),'网络未连接');
+const occupied={serial:1,outletNo:'presenter',status:2,detailState:'unknown',renderKey:''};
+for(const state of ['unknown','pending','failed','stopped','history']) assert.equal(P.badges({...occupied,detailState:state,power_w:999}).length,0,'unqueried or invalid details never leak numeric badges');
+assert.equal(P.outletStatus(occupied,true),'占用');
+assert.equal(P.outletStatus(occupied,false),'历史占用');
+const partialBadges=Array.from(P.badges({...occupied,detailState:'success',fee:0}));
+assert.deepEqual(partialBadges.map(badge=>badge.text),['功率 —','¥0.00','时长 —']);
+assert.deepEqual(partialBadges.map(badge=>badge.tone),['neutral','success','neutral']);
+const unknownBadges=Array.from(P.badges({...occupied,detailState:'success'}));
+assert.deepEqual(unknownBadges.map(badge=>badge.text),['功率 —','费用 —','时长 —']);
+assert.ok(unknownBadges.every(badge=>badge.tone==='neutral'),'successful missing fields must remain neutral unknown values');
+assert.deepEqual(Array.from(P.badges({...occupied,detailState:'success',power_w:0,fee:0,used_min:0}),badge=>badge.text),['0W','¥0.00','0分钟']);
+assert.equal(P.badges({...occupied,status:1,detailState:'success',power_w:99}).length,0);
+assert.equal(P.summaryVisible(false,0,3000,2999),true);
+assert.equal(P.summaryVisible(false,0,3000,3000),false);
+assert.equal(P.summaryVisible(false,1,3000,3001),true,'retryable failure stays visible after a success-summary deadline');
+assert.equal(P.summaryVisible(true,0,0,9999),true);
+assert.ok(!P.detailSummary(2,0,0,2).includes('成功'),'all skipped details must not claim success');
+
 // Exercise the real component controller without ArkUI rendering or a device.
 const filename = path.join(root,base,'components/ChargerMonitorUI.ets');
 const completeSource = fs.readFileSync(filename,'utf8').replace(/\r\n/g,'\n');
 let source = completeSource.split('\n  @Builder')[0]+'\n}';
 source = source.replace('@ComponentV2','').replace('export struct ChargerMonitorUI','export class ChargerMonitorUI')
-  .replace(/^\s*@Monitor\([^\n]+\)\s*$/gm,'').replace(/@(Param|Local|Event)\s+/g,'');
+  .replace(/^\s*@Monitor\([^\n]+\)\s*$/gm,'').replace(/@(Param|Local|Event)\s+/g,'').replace(/@Computed\s*/g,'');
 const output = ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS}}).outputText;
 let baseCalls = [], detailCalls = [], heldBase, heldDetails;
 const timers = [];
@@ -91,6 +119,7 @@ const moduleState = {exports:{}};
 const mocks = name => {
   if(name.endsWith('/StationService')) return {StationService:service};
   if(name.endsWith('/MonitorModel')) return {MonitorModel:M};
+  if(name.endsWith('/MonitorPresentation')) return {MonitorPresentation:P};
   if(name.endsWith('/RefreshGate')) return {RefreshGate};
   if(name.endsWith('/ChargerModels')) return load(base+'ChargerModels.ets');
   if(name.endsWith('/ApiConfig')) return {ApiConfig};
@@ -100,6 +129,12 @@ const mocks = name => {
   throw new Error(name);
 };
 new vm.Script(output,{filename}).runInNewContext({exports:moduleState.exports,module:moduleState,require:mocks,Date:ClockDate,console:{info(){}},setInterval:(callback,delay)=>{timers.push({callback,delay});return timers.length;},clearInterval:()=>{},setTimeout,clearTimeout});
+let childSource=completeSource.slice(completeSource.indexOf('struct MonitorStationCardUI {')).split('\n  @Builder')[0]+'\n}';
+childSource=childSource.replace('struct MonitorStationCardUI','export class MonitorStationCardUI').replace(/^\s*@Monitor\([^\n]+\)\s*$/gm,'').replace(/@(Param|Local|Event)\s+/g,'').replace(/@Computed\s*/g,'');
+const childOutput=ts.transpileModule("import { ThemeManager } from '../theme/ThemeManager';\nimport { MonitorPresentation } from '../utils/MonitorPresentation';\n"+childSource,{compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS}}).outputText;
+const childModule={exports:{}};
+new vm.Script(childOutput,{filename:filename+':station-card'}).runInNewContext({module:childModule,exports:childModule.exports,require:mocks,Date:ClockDate});
+const Card=childModule.exports.MonitorStationCardUI;
 const UI = moduleState.exports.ChargerMonitorUI;
 const ui = new UI();
 ui.hasAppeared=true; ui.isActive=true; ui.stationConfig={One:1,Two:2}; ui.members=[member(1),member(2)]; ui.getUIContext=()=>({});
@@ -203,6 +238,35 @@ async function main(){
   assert.equal(narrow.readings.length,1);
   assert.deepEqual(Array.from(narrow.readings[0].station.outlets,outlet=>outlet.outletNo),['shared'],'frozen station snapshots contain only exact retry targets');
   assert.ok(!completeSource.includes('.key((row: MonitorStationRow) => JSON.stringify'));
-  console.log('PASS monitor model/controller: complete rows; confirmed coverage; unknown/zero sort; due/backoff; fixed explicit detail targets; stop/network/generation isolation; targeted retry; 30s/10min expiry');
+  // Completing a job immediately withdraws running progress; its informational summary lasts exactly 3 seconds.
+  current=new Map([[1,snap(1)],[2,snap(2)]]); ui.now=now; ui.syncSnapshots(true);
+  let finishSummary; heldDetails=new Promise(resolve=>finishSummary=resolve);
+  const summaryTask=ui.fetchDetails();
+  const job=detailCalls.at(-1);
+  job.progress({stationId:1,outletNo:'1-1',generation:1,detail:{fee:0},completed:1,total:2,succeeded:1,failed:0,skipped:0});
+  job.progress({stationId:2,outletNo:'2-1',generation:1,detail:{power_w:0},completed:2,total:2,succeeded:2,failed:0,skipped:0});
+  finishSummary(); await summaryTask; heldDetails=null;
+  assert.equal(ui.detailsRunning,false,'progress is not retained after the service promise completes');
+  assert.equal(ui.detailMessage,'已获取 2 项占用详情');
+  assert.equal(P.summaryVisible(ui.detailsRunning,0,ui.detailSummaryUntil,now+2999),true);
+  assert.equal(P.summaryVisible(ui.detailsRunning,0,ui.detailSummaryUntil,now+3000),false);
+  const card=new Card(); card.row=ui.allRows[0]; card.now=now;
+  const retries=[]; card.onRetry=id=>retries.push(id); card.onInfo=id=>ui.openStationInfo(id);
+  const counts=[baseCalls.length,detailCalls.length];
+  ui.openStationInfo(1); assert.equal(ui.showStationInfo,true); ui.showStationInfo=false;
+  card.showMore(); card.selectMore('info'); assert.equal(ui.showStationInfo,true);
+  assert.deepEqual([baseCalls.length,detailCalls.length],counts,'opening/reopening the station information panel sends no requests');
+  current.set(1,snap(1,{generation:2})); ui.syncSnapshots(true); ui.onInfoRowsChange();
+  assert.equal(ui.showStationInfo,true,'a routine base refresh must not dismiss the stable page-level information panel');
+  assert.equal(ui.infoRow.generation,2,'the open information panel reads the latest row, not a frozen snapshot');
+  card.row=ui.allRows[1]; card.onRowChange(); assert.equal(card.showMenu,false,'a recycled row cannot keep a previous station menu open');
+  card.showMore(); card.selectMore('refresh');
+  assert.deepEqual(retries,[2],'explicit refresh action uses the latest recycled station id');
+  ui.allRows=ui.allRows.filter(row=>row.id!==1); ui.onInfoRowsChange();
+  assert.equal(ui.showStationInfo,false,'removing the selected station closes its information panel');
+  assert.ok(completeSource.includes('MonitorStationCardUI({ row: row.item'),'virtual rows pass their current item through @Param');
+  assert.ok(completeSource.includes('@Param row: MonitorStationRow'),'station-card state must remain a reactive parameter');
+  assert.ok(!completeSource.includes('this.stationCard(row.item)'),'do not restore the stale by-value virtual-row Builder');
+  console.log('PASS monitor model/controller: complete rows; confirmed coverage; unknown/zero sort; due/backoff; fixed explicit detail targets; stop/network/generation isolation; targeted retry; 30s/10min expiry; compact presentation and request-free info panel');
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

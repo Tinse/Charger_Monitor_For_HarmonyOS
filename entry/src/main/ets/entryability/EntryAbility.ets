@@ -1,6 +1,6 @@
 import { AbilityConstant, ConfigurationConstant, UIAbility, Want, Configuration } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { window } from '@kit.ArkUI';
+import { window, KeyboardAvoidMode } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { AppStateKeys } from '../pages/AppState';
 import { ConfigManager } from '../pages/ConfigManager';
@@ -38,7 +38,10 @@ export default class EntryAbility extends UIAbility {
     windowStage.loadContent('pages/Index', (error: BusinessError) => {
       if (error && error.code !== 0) {
         hilog.error(DOMAIN, TAG, 'Failed to load content: %{public}s', error.message);
+        return;
       }
+      // 键盘出现时缩短内容视口，保留配置页底部保存按钮的可见区域。
+      windowStage.getMainWindowSync().getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
     });
   }
 

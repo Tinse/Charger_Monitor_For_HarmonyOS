@@ -17,20 +17,20 @@ export struct SegmentedControl {
     Row() {
       ForEach(this.segments, (segment: SegmentItem, index: number) => {
         Text(segment.label)
-          .fontSize(13)
-          .fontColor(this.selectedIndex === index ? '#ffffff' : this.theme.textPrimary)
+          .fontSize(14).constraintSize({ minHeight: 40 })
+          .fontColor(this.selectedIndex === index ? this.theme.infoText : this.theme.textSecondary)
           .fontWeight(this.selectedIndex === index ? FontWeight.Medium : FontWeight.Normal)
           .textAlign(TextAlign.Center)
           .layoutWeight(1)
           .padding({ top: 8, bottom: 8 })
-          .backgroundColor(this.selectedIndex === index ? this.theme.accent : 'transparent')
+          .backgroundColor(this.selectedIndex === index ? this.theme.infoSurface : Color.Transparent)
           .borderRadius(8)
           .onClick(() => {
             this.onChangeCallback(index, segment.value);
           })
       }, (segment: SegmentItem) => segment.value.toString())
     }
-    .backgroundColor(this.theme.secondaryBackground)
+    .backgroundColor(this.theme.background)
     .borderRadius(10)
     .padding(2)
     .width('100%')

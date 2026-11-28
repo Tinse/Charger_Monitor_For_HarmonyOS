@@ -90,21 +90,8 @@ export struct MapViewerUI {
         this.lastOffsetY = this.offsetY;
       })
 
-      // Zoom level badge in bottom-left corner
-      Row() {
-        Text(`${(this.scaleValue * 100).toFixed(0)}%`)
-          .fontSize(12)
-          .fontColor(this.theme.textSecondary)
-          .fontWeight(FontWeight.Medium)
-          .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-          .backgroundColor(this.theme.cardBackground)
-          .borderRadius(8)
-          .border({ width: 0.5, color: this.theme.border })
-      }
-      .position({ left: 16, bottom: 120 })
-
       // Floating toolbar card in bottom-right corner
-      Column() {
+      Column({ space: 4 }) {
         // Zoom in button
         Button() {
           Text('+')
@@ -112,9 +99,9 @@ export struct MapViewerUI {
             .fontWeight(FontWeight.Bold)
             .fontColor(this.theme.textPrimary)
         }
-        .width(40)
-        .height(40)
-        .backgroundColor(this.theme.tertiaryBackground)
+        .width(44)
+        .height(44)
+        .backgroundColor(Color.Transparent)
         .borderRadius(10)
         .enabled(this.scaleValue < this.maxScale)
         .accessibilityText('放大地图')
@@ -122,12 +109,12 @@ export struct MapViewerUI {
 
         // Current zoom percentage text
         Text(`${(this.scaleValue * 100).toFixed(0)}%`)
-          .fontSize(11)
-          .fontColor(this.theme.textSecondary)
+          .fontSize(12)
+          .fontColor(this.theme.infoText)
           .fontWeight(FontWeight.Medium)
-          .margin({ top: 6, bottom: 6 })
+          .padding({ top: 2, bottom: 2 }).backgroundColor(this.theme.infoSurface).borderRadius(8)
           .textAlign(TextAlign.Center)
-          .width(40)
+          .width(44)
 
         // Zoom out button
         Button() {
@@ -136,9 +123,9 @@ export struct MapViewerUI {
             .fontWeight(FontWeight.Bold)
             .fontColor(this.theme.textPrimary)
         }
-        .width(40)
-        .height(40)
-        .backgroundColor(this.theme.tertiaryBackground)
+        .width(44)
+        .height(44)
+        .backgroundColor(Color.Transparent)
         .borderRadius(10)
         .enabled(this.scaleValue > this.minScale)
         .accessibilityText('缩小地图')
@@ -149,7 +136,7 @@ export struct MapViewerUI {
           .width(24)
           .height(1)
           .backgroundColor(this.theme.border)
-          .margin({ top: 8, bottom: 8 })
+          .margin({ top: 2, bottom: 2 })
 
         // Reset button
         Button() {
@@ -157,18 +144,18 @@ export struct MapViewerUI {
             .fontSize(20)
             .fontColor([this.theme.textPrimary])
         }
-        .width(40)
-        .height(40)
-        .backgroundColor(this.theme.tertiaryBackground)
+        .width(44)
+        .height(44)
+        .backgroundColor(Color.Transparent)
         .borderRadius(10)
         .accessibilityText('复位地图')
         .onClick(() => {
           this.resetView();
         })
       }
-      .padding(10)
+      .padding(4)
       .backgroundColor(this.theme.cardBackground)
-      .borderRadius(14)
+      .borderRadius(16)
       .shadow({
         radius: 12,
         color: '#1A000000',
@@ -176,7 +163,7 @@ export struct MapViewerUI {
         offsetY: 2
       })
       .border({ width: 0.5, color: this.theme.border })
-      .margin({ right: 16, bottom: 120 })
+      .margin({ right: 16, bottom: 104 })
     }
     .width('100%')
     .height('100%')
