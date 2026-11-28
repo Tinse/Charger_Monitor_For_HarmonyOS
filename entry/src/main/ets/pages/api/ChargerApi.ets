@@ -5,7 +5,7 @@ import { OutletDetail, StationData, StationBrief, StationQueryResult, OutletStat
 import { ApiConfig } from '../ApiConfig';
 import { ErrorHandler } from '../utils/ErrorHandler';
 import { calculateDistance, formatDistance } from '../utils/DistanceCalc';
-import { LocationService } from '../services/LocationService';
+import { LocationResolveResult, LocationService } from '../services/LocationService';
 
 interface PowerFeeData {
   billingPower?: string | number;
@@ -25,6 +25,8 @@ interface OutletItem {
 
 interface ApiResponseData {
   code: string;
+  message?: string;
+  msg?: string;
   data?: OutletDetailData | OutletItem[];
 }
 
@@ -57,7 +59,32 @@ interface NearbyStationPayload {
   userLongitude: number;
 }
 
+export enum NearbyLoadPhase {
+  LOCATING = 'locating',
+  QUERYING = 'querying'
+}
+
+export type NearbySource = 'device' | 'campus';
+export interface StationHttpFailure {
+  status: number;
+  retryAt?: number;
+  missing?: boolean;
+}
+
 export class ChargerApi {
+  private static failure(response: http.HttpResponse): StationHttpFailure {
+    const headers = response.header as Record<string, string>;
+    const key = headers && Object.keys(headers).find(name => name.toLowerCase() === 'retry-after');
+    const value = key ? String(headers[key]).trim() : '';
+    const retryAt = /^\d+$/.test(value) ? Date.now() + Number(value) * 1000 : Date.parse(value);
+    return { status: response.responseCode, retryAt: Number.isFinite(retryAt) && retryAt > Date.now() ? retryAt : undefined };
+  }
+
+  private static stationMissing(body: ApiResponseData): boolean {
+    const message = body?.message || body?.msg || '';
+    return typeof message === 'string' && /(?:充电站|站点)(?:已删除|不存在)|station (?:not found|has been removed)/i.test(message);
+  }
+
   private static parseNonNegative(value: string | number | undefined): number | undefined {
     if (value === undefined || (typeof value === 'string' && !value.trim())) return undefined;
     const parsed = typeof value === 'number' ? value : parseFloat(value);
@@ -65,7 +92,7 @@ export class ChargerApi {
   }
 
   // 获取单个插座的详情
-  static async fetchOutletDetail(outletNo: string): Promise<Partial<OutletDetail>> {
+  static async fetchOutletDetail(outletNo: string, onFailure?: (error: StationHttpFailure) => void): Promise<Partial<OutletDetail>> {
     let httpRequest = http.createHttp();
     let url = ApiConfig.buildOutletDetailUrl(outletNo);
 
@@ -77,6 +104,7 @@ export class ChargerApi {
         readTimeout: ApiConfig.HTTP_CONFIG.READ_TIMEOUT
       });
 
+      if (response.responseCode !== 200) onFailure?.(ChargerApi.failure(response));
       if (response.responseCode === 200) {
         let data = JSON.parse(response.result as string) as ApiResponseData;
         if (data.code == "1" && data.data) {
@@ -101,7 +129,8 @@ export class ChargerApi {
   }
 
   // 获取单个站点的所有插座
-  static async fetchStation(stationId: number, stationName: string, maxRetries = 2): Promise<StationData | null> {
+  static async fetchStation(stationId: number, stationName: string, maxRetries = 0,
+    onFailure?: (error: StationHttpFailure) => void): Promise<StationData | null> {
     let httpRequest = http.createHttp();
     let url = ApiConfig.buildStationOutletsUrl(stationId);
 
@@ -117,43 +146,35 @@ export class ChargerApi {
             readTimeout: ApiConfig.HTTP_CONFIG.READ_TIMEOUT
           });
 
-          if (response.responseCode === 200) {
-            let data = JSON.parse(response.result as string) as ApiResponseData;
-            if (data.code == "1" && Array.isArray(data.data)) {
-              let outlets: OutletDetail[] = [];
-              let promises: Promise<void>[] = [];
-
-              const outletItems = data.data as OutletItem[];
-              // 畸形或未知状态不能被计入“故障”，也不应静默少计插座。
-              if (outletItems.some(item => !item || !Number.isInteger(item.outletSerialNo) ||
-                (item.outletSerialNo as number) <= 0 || typeof item.outletNo !== 'string' || !item.outletNo.trim() ||
-                ![OutletStatus.FREE, OutletStatus.OCCUPIED, OutletStatus.BROKEN].includes(item.currentChargingRecordId as number))) {
-                return null;
-              }
-              if (outletItems.some((item, index) => outletItems.findIndex(other => other.outletNo === item.outletNo || other.outletSerialNo === item.outletSerialNo) !== index)) return null;
-              for (let item of outletItems) {
-                const status = item.currentChargingRecordId as number;
-                let outlet: OutletDetail = {
-                  serial: item.outletSerialNo as number,
-                  outletNo: item.outletNo as string,
-                  status: status
-                };
-                outlets.push(outlet);
-
-                // 并发获取占用中的插座详情
-                if (status === OutletStatus.OCCUPIED && outlet.outletNo) {
-                  let p = ChargerApi.fetchOutletDetail(outlet.outletNo).then(detail => {
-                    outlet.power_w = detail.power_w;
-                    outlet.fee = detail.fee;
-                    outlet.used_min = detail.used_min;
-                  });
-                  promises.push(p);
-                }
-              }
-              await Promise.all<void>(promises);
-              return { id: stationId, name: stationName, outlets: outlets };
+          if (response.responseCode !== 200) {
+            const failure = ChargerApi.failure(response);
+            if (failure.status === 404) {
+              try { failure.missing = ChargerApi.stationMissing(JSON.parse(response.result as string) as ApiResponseData); }
+              catch (_error) { failure.missing = false; }
             }
+            onFailure?.(failure);
+            return null;
           }
+          const data = JSON.parse(response.result as string) as ApiResponseData;
+          if (data.code != '1' || !Array.isArray(data.data)) {
+            if (ChargerApi.stationMissing(data)) onFailure?.({ status: 200, missing: true });
+            return null;
+          }
+          const outlets: OutletDetail[] = [];
+          const serials = new Set<number>();
+          const numbers = new Set<string>();
+          for (const item of data.data as OutletItem[]) {
+            const serial = item?.outletSerialNo;
+            const outletNo = item?.outletNo;
+            const status = item?.currentChargingRecordId;
+            if (typeof serial !== 'number' || !Number.isInteger(serial) || serial <= 0 || typeof outletNo !== 'string' ||
+              !outletNo.trim() || typeof status !== 'number' || ![OutletStatus.FREE, OutletStatus.OCCUPIED, OutletStatus.BROKEN].includes(status) ||
+              serials.has(serial) || numbers.has(outletNo)) return null;
+            serials.add(serial);
+            numbers.add(outletNo);
+            outlets.push({ serial, outletNo, status });
+          }
+          return { id: stationId, name: stationName, outlets };
         } catch (e) {
           ErrorHandler.handle(e, `ChargerApi.fetchStation[${stationName}] attempt ${attempt}`);
 
@@ -172,13 +193,20 @@ export class ChargerApi {
   }
 
   // 获取附近的站点列表
-  static async fetchNearbyStations(context?: common.UIAbilityContext): Promise<StationQueryResult> {
+  static async fetchNearbyStations(context?: common.UIAbilityContext,
+    onPhase?: (phase: NearbyLoadPhase) => void, source: NearbySource = 'device'): Promise<StationQueryResult> {
     let httpRequest = http.createHttp();
     let url = ApiConfig.buildNearbyStationsUrl();
 
     try {
       // 通过 LocationService 获取位置（含权限重试）
-      const locationResult = await LocationService.getLocationWithPermissionRetry(context);
+      let locationResult: LocationResolveResult = {
+        location: { latitude: ApiConfig.DEFAULT_LATITUDE, longitude: ApiConfig.DEFAULT_LONGITUDE }, status: '使用校区位置'
+      };
+      if (source === 'device') {
+        onPhase?.(NearbyLoadPhase.LOCATING);
+        locationResult = await LocationService.getLocationWithPermissionRetry(context);
+      }
       const userLocation = locationResult.location;
       const locationStatus = locationResult.status;
 
@@ -200,6 +228,7 @@ export class ChargerApi {
         userLongitude: userLocation.longitude
       };
 
+      onPhase?.(NearbyLoadPhase.QUERYING);
       let response = await httpRequest.request(url, {
         method: http.RequestMethod.POST,
         header: ApiConfig.getHeaders(),

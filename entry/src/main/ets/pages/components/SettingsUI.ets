@@ -3,6 +3,8 @@ import { PresetConfigs } from '../PresetConfigs';
 import { ConfigService } from '../services/ConfigService';
 import { ThemeManager, ThemeMode, ThemeColors } from '../theme/ThemeManager';
 import { SegmentedControl } from './SegmentedControl';
+import { StationSelection } from '../utils/StationSelection';
+import { SearchBar } from './SearchBar';
 import { ErrorHandler } from '../utils/ErrorHandler';
 
 @ComponentV2
@@ -19,6 +21,8 @@ export struct SettingsUI {
   @Event onImmersiveChange: (enabled: boolean) => void = () => {};
   @Local configs: ChargerConfig[] = [];
   @Local restoring: boolean = false;
+  @Local query: string = '';
+  @Local currentId: string = '';
   @Local hasLoadedConfigs: boolean = false;
   @Local configReadError: boolean = false;
   private configReadVersion: number = 0;
@@ -34,6 +38,7 @@ export struct SettingsUI {
       const storage = await ConfigService.loadConfigs();
       if (version !== this.configReadVersion) return;
       this.configs = storage.configs;
+      this.currentId = storage.currentConfigId || '';
       this.hasLoadedConfigs = true;
     } catch (error) {
       if (version === this.configReadVersion) this.configReadError = true;
@@ -47,6 +52,21 @@ export struct SettingsUI {
     if (this.restoring) return;
     this.restoring = true;
     try {
+      const missing = PresetConfigs.create().filter(preset => !this.configs.some(config => config.id === preset.id));
+      const conflict = this.configs.find(config => missing.some(preset => preset.name.trim().toLowerCase() === config.name.trim().toLowerCase()));
+      if (conflict) {
+        const decision = await this.getUIContext().getPromptAction().showDialog({
+          title: '需要先修改配置名称', message: `自定义配置“${conflict.name}”与要恢复的预设同名，可到配置详情修改名称。`,
+          buttons: [{ text: '取消', color: this.theme.textSecondary }, { text: '去修改', color: this.theme.accent }]
+        });
+        if (decision.index === 1) this.onOpen(conflict.id);
+        return;
+      }
+      const decision = await this.getUIContext().getPromptAction().showDialog({
+        title: '恢复默认配置？', message: `将恢复出厂站点：${missing.map(preset => preset.name).join('、')}。其他配置会保留。`,
+        buttons: [{ text: '取消', color: this.theme.textSecondary }, { text: '恢复', color: this.theme.accent }]
+      });
+      if (decision.index !== 1) return;
       await ConfigService.restoreDefaultConfigs();
       await this.loadConfigs();
       ErrorHandler.showToast(this.getUIContext(), '默认配置已恢复');
@@ -55,14 +75,34 @@ export struct SettingsUI {
     } finally { this.restoring = false; }
   }
 
+  private matchedStation(config: ChargerConfig): string {
+    const keyword = StationSelection.normalize(this.query);
+    if (!keyword) return '';
+    const display = StationSelection.displayNames(config);
+    const member = config.members?.find(item =>
+      [display[String(item.stationId)], item.originalName, item.note, String(item.stationId)]
+        .some(field => StationSelection.normalize(field).includes(keyword)));
+    return member ? display[String(member.stationId)] : '';
+  }
+
+  @Computed
+  get results(): ChargerConfig[] {
+    const keyword = StationSelection.normalize(this.query);
+    return this.configs.filter(config => StationSelection.normalize(config.name).includes(keyword) || this.matchedStation(config).length > 0);
+  }
+
   @Builder
   configRow(config: ChargerConfig) {
     Row({ space: 12 }) {
       Column({ space: 5 }) {
         Text(config.name).fontSize(16).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary)
+        if (this.matchedStation(config)) {
+          Text(`匹配站点 · ${this.matchedStation(config)}`).fontSize(12).fontColor(this.theme.textSecondary)
+        }
         Text(`${Object.keys(config.stations).length} 个站点${PresetConfigs.isPreset(config.id) ? ' · 校园预设' : ' · 自定义'}`)
           .fontSize(12).fontColor(this.theme.textSecondary)
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+      if (config.id === this.currentId) { Text('监控中').fontSize(12).fontColor(this.theme.accent) }
       SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(16).fontColor([this.theme.textSecondary])
     }.padding(16).width('100%').constraintSize({ minHeight: 64 })
       .backgroundColor(this.theme.cardBackground).borderRadius(20)
@@ -77,6 +117,14 @@ export struct SettingsUI {
           Text('设置').fontSize(30).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary)
           Text('把常去的充电站，放在一起').fontSize(14).fontColor(this.theme.textSecondary)
         }.width('100%').alignItems(HorizontalAlign.Start).margin({ top: 12, bottom: 12 })
+        SearchBar({ placeholder: '搜索配置、站名、ID 或备注', value: this.query, theme: this.theme,
+          onChangeCallback: (value: string) => { this.query = value; } })
+        if (this.query && this.results.length === 0) {
+          Row() {
+            Text('没有匹配的配置').layoutWeight(1).fontColor(this.theme.textSecondary)
+            Button('清除搜索').height(36).onClick(() => { this.query = ''; })
+          }.width('100%')
+        }
         Row() {
           Text('默认配置').layoutWeight(1).fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.theme.textSecondary)
           if (this.hasLoadedConfigs && !this.configReadError && this.configs.filter(config => PresetConfigs.isPreset(config.id)).length < 2) {
@@ -95,17 +143,17 @@ export struct SettingsUI {
         } else if (this.configs.length === 0) {
           Text('暂无配置，可增加自定义配置或恢复默认配置。').fontSize(14).fontColor(this.theme.textSecondary).width('100%')
         }
-        ForEach(this.configs.filter(config => PresetConfigs.isPreset(config.id)), (config: ChargerConfig) => {
+        ForEach(this.results.filter(config => PresetConfigs.isPreset(config.id)), (config: ChargerConfig) => {
           this.configRow(config)
-        }, (config: ChargerConfig) => JSON.stringify(config))
+        }, (config: ChargerConfig) => JSON.stringify(config) + String(this.currentId === config.id) + this.matchedStation(config))
         Row() {
           Text('我的配置').fontSize(14).fontWeight(FontWeight.Medium).fontColor(this.theme.textSecondary)
           Blank()
           Text('点击查看、编辑或删除').fontSize(12).fontColor(this.theme.textSecondary)
         }.width('100%').margin({ top: 12 })
-        ForEach(this.configs.filter(config => !PresetConfigs.isPreset(config.id)), (config: ChargerConfig) => {
+        ForEach(this.results.filter(config => !PresetConfigs.isPreset(config.id)), (config: ChargerConfig) => {
           this.configRow(config)
-        }, (config: ChargerConfig) => JSON.stringify(config))
+        }, (config: ChargerConfig) => JSON.stringify(config) + String(this.currentId === config.id) + this.matchedStation(config))
         Button() {
           Row({ space: 10 }) {
             SymbolGlyph($r('sys.symbol.plus')).fontSize(20).fontColor([this.theme.accent])

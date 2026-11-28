@@ -23,7 +23,12 @@ const prefs = {
 let storeOpenCount = 0;
 const messages = [];
 const cache = new Map();
-const stationServiceStub = { clearCache: () => {} };
+let stationCacheClearCount = 0;
+let retainedStationIds = [];
+const stationServiceStub = {
+  clearCache: () => { stationCacheClearCount++; },
+  retainStationIds: ids => { retainedStationIds = Array.from(ids); }
+};
 
 function load(relativePath, fresh = false) {
   const filename = path.resolve(root, relativePath);
@@ -130,9 +135,9 @@ async function main() {
   const { PresetConfigs } = load(`${base}PresetConfigs.ets`);
   const presets = PresetConfigs.create();
   assert.deepEqual(Array.from(presets, p => Object.keys(p.stations).length), [3, 19]);
-  assert.equal(await reloaded.updateConfig('preset_street', 'overwrite', {}), false);
   const legacy = { configs: [{ id: 'legacy', name: 'Old custom', stations: { custom: 88 }, createdAt: 123 }], currentConfigId: 'legacy' };
   storedValues.set('charger_configs', JSON.stringify(legacy));
+  await assert.rejects(reloaded.updateConfig('preset_street', 'overwrite', {}), /默认配置名称/);
   assert.equal((await reloaded.getConfigs()).configs.length, 3);
   assert.equal((await reloaded.getCurrentConfig()).id, 'legacy');
   assert.equal((await reloaded.getConfigs()).configs.length, 3, 'presets must not duplicate');
@@ -143,9 +148,12 @@ async function main() {
   assert.equal((await reloaded.getConfigs()).configs.some(config => config.id === 'legacy'), true);
   await assert.rejects(reloaded.addConfig('   ', { x: 10 }), /配置名称/);
   await assert.rejects(reloaded.addConfig('主楼C区', { x: 10 }), /已存在/);
-  await assert.rejects(reloaded.addConfig('Empty', {}), /至少保留/);
-  await assert.rejects(reloaded.updateConfig('legacy', 'Old custom', {}), /至少保留/);
-  assert.equal(Object.keys((await reloaded.getConfigs()).configs.find(config => config.id === 'legacy').stations).length, 1);
+  const emptyNamed = await reloaded.addConfig('Empty', {});
+  assert.equal(Object.keys(emptyNamed.stations).length, 0);
+  await reloaded.deleteConfig(emptyNamed.id);
+  assert.equal(await reloaded.updateConfig('legacy', 'Old custom', {}), true);
+  assert.equal(Object.keys((await reloaded.getConfigs()).configs.find(config => config.id === 'legacy').stations).length, 0);
+  await reloaded.updateConfig('legacy', 'Old custom', { custom: 88 });
   storedValues.set('charger_configs', JSON.stringify({ ...legacy, currentConfigId: 'missing' }));
   assert.equal((await reloaded.getCurrentConfig()).id, 'preset_main_c');
 
@@ -311,6 +319,112 @@ async function main() {
   assert.equal((await ConfigService.loadConfigs()).configs.length, 2);
   ConfigService.removeListener(committedListener);
 
+  // Per-configuration CRUD is based on real station IDs and preserves preset edits.
+  const stationFixture = (id, name) => ({ stationId: id, stationName: name, address: 'Campus', freeNum: 0 });
+  const getConfig = async id => (await ConfigService.loadConfigs()).configs.find(config => config.id === id);
+  const presetBefore = await getConfig('preset_main_c');
+  const presetFirstId = Object.values(presetBefore.stations)[0];
+  await ConfigService.renameStation(presetBefore.id, presetFirstId, '上课常用');
+  assert.equal((await getConfig(presetBefore.id)).stations['上课常用'], presetFirstId);
+  const renamedPresetRaw = storedValues.get('charger_configs');
+  const reloadWithPresetEdits = load(`${base}ConfigManager.ets`, true).ConfigManager;
+  await reloadWithPresetEdits.initialize(context);
+  assert.equal((await reloadWithPresetEdits.getConfigs()).configs.find(config => config.id === presetBefore.id).stations['上课常用'], presetFirstId);
+  await ConfigService.restoreDefaultConfigs();
+  assert.equal((await getConfig(presetBefore.id)).stations['上课常用'], presetFirstId, 'restore must not overwrite retained preset edits');
+  assert.ok(renamedPresetRaw.includes('上课常用'));
+  await assert.rejects(ConfigService.renameConfig(presetBefore.id, 'New preset name'), /默认配置名称/);
+  const memberConfig = await ConfigService.addConfig('Member CRUD', { Original: 101 }, { '101': 'Real original' });
+  assert.equal((await getConfig(memberConfig.id)).stationNames['101'], 'Real original');
+  await ConfigService.addStations(memberConfig.id, [stationFixture(102, 'Same source'), stationFixture(103, 'Same source'), stationFixture(102, 'Ignored duplicate')]);
+  let members = await getConfig(memberConfig.id);
+  assert.equal(Object.keys(members.stations).length, 3);
+  assert.equal(members.stations['Same source'], 102);
+  assert.equal(members.stations['Same source（103）'], 103);
+  assert.equal(members.stationNames['103'], 'Same source');
+  const beforeAliasConflict = storedValues.get('charger_configs');
+  await assert.rejects(ConfigService.renameStation(memberConfig.id, 101, 'Same source'), /同名/);
+  await assert.rejects(ConfigService.renameStation(memberConfig.id, 101, '__proto__'), /不可用/);
+  assert.equal(storedValues.get('charger_configs'), beforeAliasConflict);
+  await ConfigService.renameStation(memberConfig.id, 101, '我常去的');
+  await ConfigService.replaceStation(memberConfig.id, 101, stationFixture(104, 'Replacement source'));
+  members = await getConfig(memberConfig.id);
+  assert.equal(members.stations['我常去的'], 104, 'replacing a station retains an explicit alias');
+  assert.equal(Object.values(members.stations)[0], 104, 'rename and replacement retain the existing row position');
+  assert.equal(members.stationNames['104'], 'Replacement source');
+  assert.equal(members.stationNames['101'], undefined);
+  await ConfigService.renameStation(memberConfig.id, 104, '');
+  assert.equal((await getConfig(memberConfig.id)).stations['Replacement source'], 104, 'empty alias restores real source name');
+  await ConfigService.replaceStation(memberConfig.id, 104, stationFixture(105, 'New source'));
+  assert.equal((await getConfig(memberConfig.id)).stations['New source'], 105, 'unaliasied station follows replacement source name');
+  await assert.rejects(ConfigService.replaceStation(memberConfig.id, 105, stationFixture(102, 'Same source')), /已在/);
+  await Promise.all([
+    ConfigService.addStations(memberConfig.id, [stationFixture(106, 'Parallel add')]),
+    ConfigService.renameStation(memberConfig.id, 105, 'Parallel alias'),
+    ConfigService.removeStation(memberConfig.id, 102)
+  ]);
+  members = await getConfig(memberConfig.id);
+  assert.equal(members.stations['Parallel add'], 106);
+  assert.equal(members.stations['Parallel alias'], 105);
+  assert.equal(Object.values(members.stations).includes(102), false);
+  for (const id of Object.values(members.stations)) await ConfigService.removeStation(memberConfig.id, id);
+  members = await getConfig(memberConfig.id);
+  assert.equal(Object.keys(members.stations).length, 0, 'removing the last station retains the configuration');
+  assert.equal(Object.keys(members.stationNames).length, 0);
+  await ConfigService.renameConfig(memberConfig.id, 'Empty but retained');
+  assert.equal((await getConfig(memberConfig.id)).name, 'Empty but retained');
+  await ConfigService.addStations(memberConfig.id, [stationFixture(107, 'Back again')]);
+  const sourceConfig = await getConfig(presetBefore.id);
+  const copied = await ConfigService.addConfig('Alias copy', sourceConfig.stations, sourceConfig.stationNames);
+  assert.equal((await getConfig(copied.id)).stationNames[String(presetFirstId)], sourceConfig.stationNames[String(presetFirstId)]);
+  await ConfigService.renameStation(copied.id, presetFirstId, '');
+  assert.ok(Object.keys((await getConfig(copied.id)).stations).includes(sourceConfig.stationNames[String(presetFirstId)]));
+  await ConfigService.addStations(memberConfig.id, [stationFixture(109, '__proto__')]);
+  assert.equal((await getConfig(memberConfig.id)).stations['__proto__（109）'], 109, 'reserved source names receive a readable safe suffix');
+  assert.equal((await getConfig(memberConfig.id)).stationNames['109'], '__proto__');
+  await ConfigService.renameStation(memberConfig.id, 109, '');
+  assert.equal((await getConfig(memberConfig.id)).stations['__proto__（109）'], 109);
+  await ConfigService.renameStation(memberConfig.id, 107, 'Back again（107） 备用门');
+  await ConfigService.replaceStation(memberConfig.id, 107, stationFixture(110, 'Changed source'));
+  assert.equal((await getConfig(memberConfig.id)).stations['Back again（107） 备用门'], 110,
+    'a user alias with nonnumeric suffix must survive replacement');
+  await ConfigService.addStations(memberConfig.id, [stationFixture(111, 'Auto name'), stationFixture(113, 'Auto name（112）'), stationFixture(112, 'Auto name')]);
+  assert.equal((await getConfig(memberConfig.id)).stations['Auto name（112） 2'], 112);
+  await ConfigService.replaceStation(memberConfig.id, 112, stationFixture(114, 'Auto replacement'));
+  assert.equal((await getConfig(memberConfig.id)).stations['Auto replacement'], 114, 'generated numeric disambiguation follows the replacement source');
+  const beforeBadBatch = storedValues.get('charger_configs');
+  await assert.rejects(ConfigService.addStations(memberConfig.id, [stationFixture(108, 'Good'), stationFixture(0, 'Invalid')]), /无效/);
+  assert.equal(storedValues.get('charger_configs'), beforeBadBatch, 'invalid batch must be atomic');
+  await assert.rejects(ConfigService.removeStation('missing', 110), /不存在/);
+  await assert.rejects(ConfigService.renameStation(memberConfig.id, 999, 'Missing'), /不在/);
+
+  const currentBeforeNonCurrentEdit = (await ConfigService.getCurrentConfig()).id;
+  const clearCountBeforeNonCurrentEdit = stationCacheClearCount;
+  const selectionNotifications = [];
+  const selectionListener = (_stations, config) => selectionNotifications.push(config ? config.id : null);
+  ConfigService.addListener(selectionListener);
+  const beforeFailedRemoval = storedValues.get('charger_configs');
+  prefs.flush = async () => {
+    prefs.flush = originalFlush;
+    throw new Error('simulated failure while removing a station');
+  };
+  await assert.rejects(ConfigService.removeStation(presetBefore.id, presetFirstId), /配置保存失败/);
+  assert.equal(storedValues.get('charger_configs'), beforeFailedRemoval, 'failed removal must preserve the member and its alias');
+  assert.deepEqual(selectionNotifications, [], 'failed removal must not update the monitor');
+  await ConfigService.renameStation(memberConfig.id, 110, '仅此配置别名');
+  assert.equal((await ConfigService.getCurrentConfig()).id, currentBeforeNonCurrentEdit, 'editing another configuration must not change the current selection');
+  assert.equal(stationCacheClearCount, clearCountBeforeNonCurrentEdit, 'non-current station edits must not cancel current cache requests');
+  assert.equal(selectionNotifications.length, 0, 'non-current edits must not notify current monitor');
+  await ConfigService.renameStation(presetBefore.id, presetFirstId, '当前站点更新');
+  assert.equal(stationCacheClearCount, clearCountBeforeNonCurrentEdit, 'renaming an active member must preserve its physical station measurements');
+  assert.deepEqual(selectionNotifications, [presetBefore.id], 'current edits must still notify the monitor');
+  await ConfigService.switchConfig(copied.id);
+  await ConfigService.deleteConfig(copied.id);
+  const fallbackId = (await ConfigService.getCurrentConfig()).id;
+  assert.deepEqual(selectionNotifications, [presetBefore.id, copied.id, fallbackId]);
+  assert.equal(stationCacheClearCount, 0, 'config edits, switch, delete and restore operations must not flush shared station data');
+  ConfigService.removeListener(selectionListener);
+
   const { StationSelection } = load(`${base}utils/StationSelection.ets`);
   const candidates = [
     { stationId: 1, stationName: '主楼C 区1号', address: '清水河', freeNum: 0 },
@@ -330,20 +444,94 @@ async function main() {
   assert.deepEqual(Array.from(merged, station => station.stationId), [2, 1], 'retain selected off-list stations and deduplicate IDs');
   assert.equal(StationSelection.toStationMap(merged, [1, 2])['主楼C 区1号'], 1);
   assert.throws(() => StationSelection.toStationMap(merged, [99]), /信息缺失/);
-  assert.throws(() => StationSelection.toStationMap([
+  const sameSourceMap = StationSelection.toStationMap([
     { ...candidates[0], stationName: 'Same name' }, { ...candidates[1], stationName: 'Same name' }
-  ], [1, 2]), /重名/);
+  ], [1, 2]);
+  assert.equal(sameSourceMap['Same name'], 1);
+  assert.equal(sameSourceMap['Same name（2）'], 2);
+
+  await emptyReload.clearAllConfigs();
+  await Promise.all([emptyReload.deleteConfig('preset_main_c'), emptyReload.deleteConfig('preset_street')]);
+  const emptyFirst = await ConfigService.addConfig('Named empty first', {});
+  assert.equal((await ConfigService.getCurrentConfig()).id, emptyFirst.id, 'a first named empty config becomes current');
+  assert.equal(Object.keys((await ConfigService.getCurrentConfig()).stations).length, 0);
+  const emptyCopy = await ConfigService.addConfig('Named empty copy', emptyFirst.stations, emptyFirst.stationNames);
+  assert.notEqual(emptyCopy.id, emptyFirst.id);
+  assert.equal(Object.keys(emptyCopy.stations).length, 0);
+  await ConfigService.addStations(emptyFirst.id, [stationFixture(130, 'Added after empty creation')]);
+  assert.equal((await ConfigService.getCurrentConfig()).stations['Added after empty creation'], 130);
+  await assert.rejects(ConfigService.addConfig(' ', {}), /名称/);
+
+  await ConfigService.addStations(emptyFirst.id, [stationFixture(131, 'Second'), stationFixture(132, 'Third')]);
+  await Promise.all([
+    ConfigService.editStation(emptyFirst.id, 130, 'North gate', undefined, undefined),
+    ConfigService.editStation(emptyFirst.id, 130, undefined, 'Near the exit', undefined),
+    ConfigService.editStation(emptyFirst.id, 130, undefined, undefined, true)
+  ]);
+  const editedMember = (await getConfig(emptyFirst.id)).members.find(member => member.stationId === 130);
+  assert.deepEqual([editedMember.alias, editedMember.note, editedMember.paused], ['North gate', 'Near the exit', true],
+    'concurrent edits of different preferences on the same membership must merge');
+  assert.ok(retainedStationIds.includes(130), 'paused but referenced stations retain snapshots');
+  assert.deepEqual(Object.values(await ConfigService.getCurrentStationConfig()), [131, 132]);
+  await ConfigService.moveStation(emptyFirst.id, 132, -1);
+  const source = await ConfigService.getCurrentConfig();
+  assert.deepEqual(Array.from(source.members, item => item.stationId), [130, 132, 131]);
+  const copyName = emptyReload.copyName(source.name, (await ConfigService.loadConfigs()).configs);
+  const memberCopy = await ConfigService.addConfig(copyName, source.stations, source.stationNames, source.members);
+  assert.equal(emptyReload.copyName(source.name, (await ConfigService.loadConfigs()).configs), source.name + ' 副本 2');
+  assert.ok(emptyReload.copyName('123456789012345678901234', []).length <= 24);
+  assert.deepEqual(JSON.parse(JSON.stringify(memberCopy.members)), JSON.parse(JSON.stringify(source.members)));
+  await ConfigService.replaceStation(emptyFirst.id, 130, stationFixture(133, 'Replaced'), true);
+  const replaced = (await ConfigService.getCurrentConfig()).members[0];
+  assert.deepEqual([replaced.stationId, replaced.alias, replaced.note, replaced.paused], [133,'North gate','Near the exit',true]);
+  await ConfigService.replaceStation(emptyFirst.id, 133, stationFixture(134, 'New'));
+  assert.equal((await ConfigService.getCurrentConfig()).members[0].note, '');
+  assert.equal((await getConfig(memberCopy.id)).members[0].note, 'Near the exit');
+  await assert.rejects(ConfigService.editStation(memberCopy.id, 130, '', 'x'.repeat(201), false), /备注/);
+  const intact = storedValues.get('charger_configs');
+  await assert.rejects(ConfigService.removeStations(emptyFirst.id, [132, 999999]), /不在/);
+  assert.equal(storedValues.get('charger_configs'), intact);
+  const beforeBatchFlush = prefs.flush;
+  prefs.flush = async () => { prefs.flush = beforeBatchFlush; throw new Error('batch flush interrupted'); };
+  await assert.rejects(ConfigService.removeStations(emptyFirst.id, [132, 131]), /保存失败/);
+  assert.equal(storedValues.get('charger_configs'), intact, 'failed batch must not partially remove stations');
+  await ConfigService.removeStations(emptyFirst.id, [132, 131]);
+  assert.deepEqual(Object.keys(await ConfigService.getCurrentStationConfig()), [], 'all-paused differs from no members');
+  assert.equal((await ConfigService.getCurrentConfig()).members.length, 1);
+  await ConfigService.deleteConfig(emptyFirst.id);
+  assert.equal((await getConfig(memberCopy.id)).members.length, 3);
+  assert.ok(!retainedStationIds.includes(134) && retainedStationIds.includes(130));
+
+  const legacyDraft = { configs: [{ id: 'legacyAlias', name: 'Legacy', createdAt: 1,
+    stations: { 'My own label': 10, 'Source B': 20 }, stationNames: { '10': 'Source A', '20': 'Source B' } }],
+    currentConfigId: 'legacyAlias', deletedPresetIds: ['preset_street'] };
+  const beforeMigration = JSON.stringify(legacyDraft);
+  storedValues.set('charger_configs', beforeMigration);
+  const migrationFlush = prefs.flush;
+  prefs.flush = async () => { prefs.flush = migrationFlush; throw new Error('interrupted schema upgrade'); };
+  await assert.rejects(ConfigService.loadConfigs(), /保存失败/);
+  assert.equal(storedValues.get('charger_configs'), beforeMigration, 'failed migration must restore the exact legacy bytes');
+  const upgraded = await ConfigService.loadConfigs();
+  const upgradedMember = upgraded.configs.find(config => config.id === 'legacyAlias').members[0];
+  assert.deepEqual([upgraded.currentConfigId, upgradedMember.stationId, upgradedMember.originalName, upgradedMember.alias],
+    ['legacyAlias', 10, 'Source A', 'My own label']);
+  assert.ok(!upgraded.configs.some(config => ['preset_street','preset_d'].includes(config.id)));
+  const committedUpgrade = storedValues.get('charger_configs');
+  await ConfigService.loadConfigs();
+  assert.equal(storedValues.get('charger_configs'), committedUpgrade, 'a successful migration must be idempotent');
 
   const { DataCache } = load(`${base}utils/DataCache.ets`);
   const { ApiConfig } = load(`${base}ApiConfig.ets`);
   const station = { id: 101, name: 'stationA', outlets: [] };
   DataCache.setStation(101, station);
   DataCache.setNearbyStations([{ stationId: 101, stationName: 'stationA', address: '', freeNum: 0 }]);
-  now += ApiConfig.CACHE_DURATION - 1;
+  now += ApiConfig.AUTO_REFRESH_INTERVAL - 1;
   assert.equal(DataCache.getStation(101), station);
   assert.equal(DataCache.getNearbyStations().length, 1);
   now++;
   assert.equal(DataCache.getStation(101), null, 'TTL must expire at the boundary');
+  assert.equal(DataCache.getHistory(101).data, station, 'stale station remains available for history');
+  now += ApiConfig.CACHE_DURATION - ApiConfig.AUTO_REFRESH_INTERVAL;
   assert.equal(DataCache.getNearbyStations(), null);
   DataCache.setStation(101, station);
   DataCache.clearAll();
@@ -361,7 +549,7 @@ async function main() {
   assert.equal(DataValidator.validateStationData({ id: 1, name: 'bad', outlets: [
     { serial: 1, outletNo: 'a', status: 99 }
   ] }), false);
-  console.log('PASS: committed snapshot notifications without post-read, listener isolation/snapshot consistency, unreadable-store protection, station selection preservation, serialized concurrent writers/recovery, preset deletion/restore/empty-state/reload, legacy migration, keyword union/deselection, config CRUD/switch/reload, cache TTL/clear, distance, data validation');
+  console.log('PASS: durable member migration/rollback, independent copies/notes/pausing/order, atomic bulk removal, concurrent field edits, per-config station CRUD/preset edits/aliases/concurrent deltas, committed snapshot notifications without post-read, listener isolation/snapshot consistency, unreadable-store protection, station selection preservation, serialized concurrent writers/recovery, preset deletion/restore/empty-state/reload, legacy migration, keyword union/deselection, config CRUD/switch/reload, cache TTL/clear, distance, data validation');
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

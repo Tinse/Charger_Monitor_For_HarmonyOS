@@ -1,98 +1,75 @@
-// DataCache.ets - 数据缓存管理
 import { StationData, StationBrief } from '../ChargerModels';
 import { ApiConfig } from '../ApiConfig';
 
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
+export interface StationEntry {
+  data: StationData;
+  fetchedAt: number;
+  generation: number;
+  fromDisk: boolean;
+}
+
+interface NearbyEntry {
+  data: StationBrief[];
+  fetchedAt: number;
 }
 
 export class DataCache {
-  private static stationCache: Map<number, CacheEntry<StationData>> = new Map();
-  private static nearbyStationsCache: CacheEntry<StationBrief[]> | null = null;
+  private static sequence: number = 0;
+  private static stations: Map<number, StationEntry> = new Map();
+  private static nearby: Map<string, NearbyEntry> = new Map();
 
-  // 获取缓存的站点数据
-  static getStation(stationId: number): StationData | null {
-    const cached = DataCache.stationCache.get(stationId);
-    if (cached && DataCache.isValid(cached.timestamp)) {
-      console.log(`[DataCache] Cache hit for station ${stationId}`);
-      return cached.data;
-    }
-
-    // 缓存过期，清除
-    if (cached) {
-      DataCache.stationCache.delete(stationId);
-    }
-
-    console.log(`[DataCache] Cache miss for station ${stationId}`);
-    return null;
+  static getHistory(id: number, now: number = Date.now()): StationEntry | undefined {
+    const entry = DataCache.stations.get(id);
+    if (entry && now >= entry.fetchedAt && now - entry.fetchedAt < ApiConfig.STATION_HISTORY_DURATION) return entry;
+    if (entry) DataCache.stations.delete(id);
+    return undefined;
   }
 
-  // 与 getStation 配套读取实际获取时间；缓存命中不会推进此时间。
-  static getStationTimestamp(stationId: number): number | undefined {
-    return DataCache.stationCache.get(stationId)?.timestamp;
+  static getStation(id: number): StationData | null {
+    const entry = DataCache.getHistory(id);
+    return entry && !entry.fromDisk && Date.now() - entry.fetchedAt < ApiConfig.AUTO_REFRESH_INTERVAL ? entry.data : null;
   }
 
-  // 设置站点数据缓存
-  static setStation(stationId: number, data: StationData, fetchedAt: number = Date.now()): void {
-    DataCache.stationCache.set(stationId, {
-      data: data,
-      timestamp: fetchedAt
+  static getStationTimestamp(id: number): number | undefined {
+    return DataCache.getHistory(id)?.fetchedAt;
+  }
+
+  static setStation(id: number, data: StationData, fetchedAt: number = Date.now(), fromDisk: boolean = false): void {
+    DataCache.stations.set(id, { data, fetchedAt, generation: ++DataCache.sequence, fromDisk });
+  }
+
+  static historyEntries(): StationEntry[] {
+    const entries: StationEntry[] = [];
+    DataCache.stations.forEach((_value, id) => {
+      const entry = DataCache.getHistory(id);
+      if (entry) entries.push(entry);
     });
-    console.log(`[DataCache] Cached station ${stationId}`);
+    return entries;
   }
 
-  // 获取缓存的附近站点数据
-  static getNearbyStations(): StationBrief[] | null {
-    if (DataCache.nearbyStationsCache && DataCache.isValid(DataCache.nearbyStationsCache.timestamp)) {
-      console.log('[DataCache] Cache hit for nearby stations');
-      return DataCache.nearbyStationsCache.data;
-    }
+  static retain(ids: Set<number>): void {
+    DataCache.stations.forEach((_entry, id) => { if (!ids.has(id)) DataCache.stations.delete(id); });
+  }
 
-    DataCache.nearbyStationsCache = null;
-    console.log('[DataCache] Cache miss for nearby stations');
+  static getNearbyStations(source: string = 'device'): StationBrief[] | null {
+    const entry = DataCache.nearby.get(source);
+    const now = Date.now();
+    if (entry && now >= entry.fetchedAt && now - entry.fetchedAt < ApiConfig.CACHE_DURATION) return entry.data;
+    if (entry) DataCache.nearby.delete(source);
     return null;
   }
 
-  // 设置附近站点数据缓存
-  static setNearbyStations(stations: StationBrief[]): void {
-    DataCache.nearbyStationsCache = {
-      data: stations,
-      timestamp: Date.now()
-    };
-    console.log(`[DataCache] Cached ${stations.length} nearby stations`);
+  static setNearbyStations(data: StationBrief[], source: string = 'device'): void {
+    DataCache.nearby.set(source, { data, fetchedAt: Date.now() });
   }
 
-  // 清除所有缓存
   static clearAll(): void {
-    DataCache.stationCache.clear();
-    DataCache.nearbyStationsCache = null;
-    console.log('[DataCache] All cache cleared');
+    DataCache.stations.clear();
+    DataCache.nearby.clear();
   }
 
-  // 清除过期缓存
   static clearExpired(): void {
-    const keysToDelete: number[] = [];
-
-    DataCache.stationCache.forEach((value, key) => {
-      if (!DataCache.isValid(value.timestamp)) {
-        keysToDelete.push(key);
-      }
-    });
-
-    keysToDelete.forEach(key => {
-      DataCache.stationCache.delete(key);
-    });
-
-    if (DataCache.nearbyStationsCache && !DataCache.isValid(DataCache.nearbyStationsCache.timestamp)) {
-      DataCache.nearbyStationsCache = null;
-    }
-
-    console.log(`[DataCache] Cleared ${keysToDelete.length} expired entries`);
-  }
-
-  // 检查缓存是否有效
-  private static isValid(timestamp: number): boolean {
-    return Date.now() - timestamp < ApiConfig.CACHE_DURATION;
+    DataCache.historyEntries();
+    DataCache.nearby.forEach((_value, source) => { DataCache.getNearbyStations(source); });
   }
 }

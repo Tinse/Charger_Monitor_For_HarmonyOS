@@ -44,6 +44,7 @@ interface SortModeType {
   FEE: number;
   DURATION: number;
   FREE_COUNT: number;
+  CONFIG_ORDER: number;
 }
 
 export const SORT_MODE: SortModeType = {
@@ -51,14 +52,25 @@ export const SORT_MODE: SortModeType = {
   POWER: 1,
   FEE: 2,
   DURATION: 3,
-  FREE_COUNT: 4
+  FREE_COUNT: 4,
+  CONFIG_ORDER: 5
 };
 
 // 配置管理相关接口
+export interface ConfigStationMember {
+  stationId: number;
+  originalName: string;
+  alias: string;
+  note: string;
+  paused: boolean;
+}
+
 export interface ChargerConfig {
+  members?: ConfigStationMember[]; // 有序成员；旧配置首次读取时从 stations 迁移
   id: string;
   name: string;
-  stations: Record<string, number>; // {站点名称: 站点ID}
+  stations: Record<string, number>; // {本配置内显示名称: 真实站点ID}
+  stationNames?: Record<string, string>; // {String(真实站点ID): 服务端原站名}，兼容旧配置
   createdAt: number;
 }
 

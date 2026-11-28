@@ -39,7 +39,9 @@ export class ApiConfig {
   static readonly CACHE_DURATION = 60000; // 1分钟缓存
 
   // 刷新配置
-  static readonly AUTO_REFRESH_INTERVAL = 30000; // 30秒自动刷新
+  static readonly AUTO_REFRESH_INTERVAL = 15000;
+  static readonly STATION_CONFIRM_DURATION = 30000;
+  static readonly STATION_HISTORY_DURATION = 600000;
   static readonly MANUAL_REFRESH_COOLDOWN = 3000; // 3秒手动刷新冷却
   static readonly DEBOUNCE_DELAY = 300; // 300ms 防抖延迟
 

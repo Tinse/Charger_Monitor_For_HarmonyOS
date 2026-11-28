@@ -1,6 +1,6 @@
 # 充电不愁 · HarmonyOS 7
 
-当前版本 **1.8.0**（versionCode `1008000`）。[下载未签名 HAP](https://github.com/Tinse/Charger_Monitor_For_HarmonyOS/releases/tag/v1.8.0)
+最近发布 **1.9.0**（versionCode `1009000`）。[下载未签名 HAP](https://github.com/Tinse/Charger_Monitor_For_HarmonyOS/releases/tag/v1.9.0)
 
 面向电子科技大学充电场景的原生 ArkTS / ArkUI 应用。查看充电站插座状态、寻找附近站点、保存常用站点组合，并浏览内置校园地图。
 
@@ -10,18 +10,26 @@
 
 | 页面 | 功能 | 实现入口 |
 | --- | --- | --- |
-| 监控 | 空闲 / 占用 / 故障 / 总数统计；查看占用插座的功率、费用和时长；按名称搜索；按序号、空闲数、功率、费用、时长排序 | [ChargerMonitorUI.ets](entry/src/main/ets/pages/components/ChargerMonitorUI.ets) |
-| 配置 | 监控页切换配置；设置页进入详情；自定义配置可编辑名称与站点；默认配置可复制后修改；两类配置均可确认删除，并可恢复默认配置 | [ConfigDetailUI.ets](entry/src/main/ets/pages/components/ConfigDetailUI.ets)、[StationPickerUI.ets](entry/src/main/ets/pages/components/StationPickerUI.ets)、[ConfigService.ets](entry/src/main/ets/pages/services/ConfigService.ets) |
+| 监控 | 默认查看空闲、占用、故障；点击按钮才查询功率、费用、时长并显示进度。支持搜索、配置顺序及详情排序 | [ChargerMonitorUI.ets](entry/src/main/ets/pages/components/ChargerMonitorUI.ets) |
+| 配置 | 监控页切换配置；配置内按显示名称、原站名或 ID 搜索。默认和自定义配置都支持逐站添加、改别名、替换和移除，默认配置可另存为副本 | [ConfigDetailUI.ets](entry/src/main/ets/pages/components/ConfigDetailUI.ets)、[ConfigStationUI.ets](entry/src/main/ets/pages/components/ConfigStationUI.ets)、[StationPickerUI.ets](entry/src/main/ets/pages/components/StationPickerUI.ets)、[ConfigService.ets](entry/src/main/ets/pages/services/ConfigService.ets) |
 | 地图 | 内置静态校园地图；双指缩放、单指拖动、缩放按钮和复位；缩放范围 50%～500% | [MapViewerUI.ets](entry/src/main/ets/pages/components/MapViewerUI.ets) |
 | 外观 | 跟随系统 / 深色 / 浅色，主题设置保存在本地；底部 HDS 浮动导航栏，支持切换沉浸材质效果 | [Index.ets](entry/src/main/ets/pages/Index.ets)、[ThemeManager.ets](entry/src/main/ets/pages/theme/ThemeManager.ets) |
 
-内置两套配置：主楼 C 区（3 站）、商业街（19 站）。首次启动默认使用主楼 C 区；旧的 D 区预设移除，原先选中 D 区时迁移到剩余可用配置，已有自定义配置保留。监控页的配置标签用于切换；设置页点击配置进入详情，不改变当前监控配置。默认配置保持原始站点，可复制为自定义配置；自定义配置可编辑名称、增加或移除站点。默认和自定义配置均可经过确认后删除。站点 ID、名称与坐标见 [核对记录](docs/stations.md)。
+### 当前源码中的站点管理
 
-设置页点击「增加配置」进入独立的二级页面，底部页签自动隐藏。填写名称后，可搜索站点名称或地址，也可点击「主楼C区」「商业街」快捷词，再点「勾选结果」。批量勾选采用累加方式，保留其他关键词下的选择；「取消结果」仅移除当前结果，「已选」用于复查组合。搜索忽略空格和英文大小写。配置至少保留一个站点，名称不能为空或与已有配置重名。
+下一阶段的配置管理、站点自定义、监控缓存策略与验收条件见[功能设计方案](docs/feature-design.md)。
 
-在配置详情中点击「编辑名称与站点」可增减站点或改名。重新定位后，原先勾选但已超出查询范围的站点仍保留在草稿中。不同站点重名或已选站点资料缺失时，保存按钮会提示调整选择或重新加载。保存后返回详情，带着修改返回时可选择继续编辑或放弃修改。
+首次启动包含主楼 C 区（3 站）和商业街（19 站）。从设置点配置名，或在监控点「管理配置」，即可管理这套配置中的站点。[校园站点 ID、名称与坐标](docs/stations.md)
 
-删除默认配置后会保存删除记录（`deletedPresetIds`），重新读取或重启不会自动恢复。删除当前配置时切换到剩余配置；删除最后一套配置后保留空列表，监控页引导增加配置，不自动补回预设。设置中的「恢复默认配置」仅在明确点击后恢复两套预设，保留自定义配置和仍有效的当前选择；如自定义名称与预设冲突，会提示先重命名，不覆盖已有内容。删除弹窗展示期间锁定重复操作，取消后恢复可操作状态。
+| 操作 | 使用方式与结果 |
+| --- | --- |
+| 查找 | 在配置详情输入显示名、原站名或站点 ID，可在离线时查阅已保存的站点。点一行进入单站详情。 |
+| 添加 | 点「添加站点」，搜索名称、地址或 ID，可按关键词批量选择。已加入的站点有标记，跨关键词选择可以一起保存。 |
+| 修改 | 在单站详情编辑别名、备注、暂停状态。支持上下移、替换；替换可选择保留备注，保留别名和顺序。 |
+| 移除 | 单站确认移除或跨筛选批量移除。其他配置保留。移除最后一站后保留空配置，可再次添加。 |
+| 管理整套配置 | 在配置详情使用「更多」进行整套操作。任意配置均可独立复制，自定义配置可改名。删除确认显示接替监控的配置。设置支持配置与成员搜索。 |
+
+站点 ID 用于查询真实插座。别名、成员和替换操作只作用于当前配置，修改当前监控配置后，监控页同步更新。可以先按名称创建空配置。在空配置的监控页点击「添加站点」，即可继续为这套配置选站。选站器内置 22 个校园站点，联网后还可选择附近查询的结果。恢复默认配置会补回已删除的预设，保留其他配置中已编辑的站点和别名。
 
 首次读取配置出错时，监控页提供「重新读取配置」。设置页会保留最近一次成功读出的列表。存储格式损坏时会阻止写入，避免用默认配置覆盖个人配置。
 
@@ -29,7 +37,7 @@
 
 ## 软件架构
 
-工程采用 Stage 模型，只有一个 `entry` 模块和一个 `EntryAbility`。主页面和地图沿用 ArkUI 状态管理 V1；监控页、设置首页、配置详情、站点选择页、搜索栏和分段控件使用 V2（`@ComponentV2`、`@Local`、`@Param`、`@Event`），明确输入、局部状态和事件契约。没有 WebView、应用自建后端或第三方运行时依赖。
+工程采用 Stage 模型，只有一个 `entry` 模块和一个 `EntryAbility`。主页面和地图沿用 ArkUI 状态管理 V1；监控页、设置首页、配置详情、站点详情、站点选择页、搜索栏和分段控件使用 V2（`@ComponentV2`、`@Local`、`@Param`、`@Event`），明确输入、局部状态和事件契约。没有 WebView、应用自建后端或第三方运行时依赖。
 
 ```mermaid
 flowchart TD
@@ -39,7 +47,10 @@ flowchart TD
     Settings -->|配置详情 / 增加配置| Nav[Navigation / NavDestination]
     Monitor -->|管理配置| Nav
     Nav --> Detail[ConfigDetailUI]
-    Detail -->|编辑 / 复制| Picker[StationPickerUI]
+    Detail -->|添加 / 复制| Picker[StationPickerUI]
+    Detail --> Station[ConfigStationUI]
+    Station -->|替换站点| Picker
+    Station --> Config
     Nav --> Picker
     Root --> Map[MapViewerUI<br/>本地地图图片]
     Monitor --> Config[ConfigService<br/>配置变更通知]
@@ -47,8 +58,7 @@ flowchart TD
     Detail --> Config
     Config --> Store[ConfigManager]
     Store --> Prefs[ArkData Preferences]
-    Config -->|配置变化时清缓存| Stations[StationService]
-    Monitor --> Stations
+    Monitor --> Stations[StationService]
     Picker --> Stations
     Stations --> Cache[DataCache<br/>进程内缓存]
     Stations --> API[ChargerApi<br/>HTTP 接口适配]
@@ -61,25 +71,24 @@ flowchart TD
 ### 数据流与职责
 
 1. **启动**：`EntryAbility` 注入 `ApplicationContext`，初始化配置存储、共享主题状态和主窗口，再加载 `pages/Index`。配置初始化使用共享 Promise，页面读取会等待初始化完成，不依赖已废弃的全局 `getContext()`。
-2. **站点监控**：页面将 `{站点名称: 站点 ID}` 交给 `StationService`；服务先读缓存，再通过 `ChargerApi` 读取插座列表，并补充占用插座的功率、费用和时长。每批最多并发 4 个站点；返回成功站点及失败站点名称。部分失败会提示缺失站点，全部失败时保留同一配置的上次数据并提示重试。
-3. **附近站点**：`StationService` 检查附近列表缓存；未命中时，`ChargerApi` 委托 `LocationService` 处理定位能力、系统定位开关和授权，然后使用坐标查询站点并计算直线距离。此处是直线距离，不是步行或骑行距离。
+2. **站点监控**按真实站点 ID 复用缓存，使用当前配置的别名展示。冷启动和刷新时显示「已处理 N/M 站」。缓存命中立即回显，其余站使用最多 4 路站点查询，每返回一站便更新卡片和插座统计。查询失败也计入已处理数，成功数单独展示。刷新期间仍能浏览原卡片，未确认的站标为上次记录，顶部数字只统计仍在确认有效期内的站。
+3. **附近站点**：`StationService` 检查附近列表缓存；由用户选择位置来源；校园位置直接查询，设备位置委托 `LocationService` 处理定位能力、系统开关和授权，然后使用坐标查询并计算直线距离。此处是直线距离，不是步行或骑行距离。
 4. `ConfigManager` 按顺序完成配置的读取、修改和写入。写盘失败时会尝试恢复写入前的值，回滚也失败时提示重新打开应用核对。配置变化后，`ConfigService` 使用一致的当前配置快照通知页面，单个监听回调异常不会阻止其余回调。
 5. **界面派生状态**：监控列表的过滤、排序由 V2 `@Monitor` 更新；主题由 `ThemeManager` 映射颜色并保存偏好，窗口状态通过 `AppStateKeys` 共享。
 
 ### 刷新、缓存与资源释放
 
-- 应用在前台、当前页签为监控且没有二级页面覆盖时，每 30 秒检查一次站点数据。切换页签、打开详情或进入后台会停止自动刷新。返回监控时重新检查。
-- 站点选择二级页只在可见时主动获取定位；从系统位置设置返回且尚未查询、列表为空或此前使用默认位置时重新查询，避免在后台发起仅允许使用期间的定位请求。
-- 站点和附近列表使用 60 秒的进程内缓存。附近列表会保留上次的定位来源，例如使用设备位置或因缺少权限而使用校区默认位置。再次使用缓存时，页面会标明来源和缓存状态。
-- 顶部按钮、下拉刷新和错误页重试共用同一刷新流程：清缓存、执行请求、反馈结果，并在结束时释放刷新状态。
-- 3 秒冷却从触发刷新时开始，以绝对时间计算剩余秒数；界面显示倒计时。请求尚未结束时仍禁止重复刷新，冷却结束不代表慢请求已完成；页面返回前台时按当前时间校正倒计时。
-- 切换配置后会清空旧列表与搜索条件，显示当前配置中的站点名称。清除缓存前发出的慢请求随后返回时，其结果也无法写回已清除的缓存。
-- 「数据获取于」显示当前已加载站点中，客户端最早一次从接口成功取回数据的月日、时分秒。再次命中缓存会保留原时间。部分失败会列出未加载的站点，全部失败会保留同一配置上次的数据和时间。
-- 占用插座的功率统一按 W 展示，保留小数，并将 kW 转换为 W。缺失的功率、费用、时长保持未知。遇到重复插座或未知状态，所在站点会计入加载失败，以免误报故障或重复计数。
-- 启动时仅读取外观偏好。修改主题或沉浸光感时若写盘失败，会提示重试并尝试恢复原选择。
-- 监控站点和附近站点使用 `Repeat.virtualScroll()` 虚拟列表，只构建可见行及少量缓存行；二级页保存按钮固定在安全区域内，无需滚过整份站点列表。
-- 两个站点搜索框使用 300 毫秒防抖，输入停顿后更新结果，不要求额外提交搜索。
-- HTTP 实例在 `finally` 中销毁；组件销毁时清理定时器和定位开关监听。
+- 基础状态最多并发 4 站，返回一站即展示一站。仅在前台监控可见时，每站成功后 15 秒启动复查；30 秒后退出已确认汇总，10 分钟后隐藏旧数值。
+- 统计显示「已确认 X/Y 站」，搜索不改变统计范围。失败、离线与冷启动磁盘快照以历史状态展示；未知数值为「—」。基础状态时间不被缓存命中或详情响应改写。
+- 普通刷新只获取基础状态。点击「查询占用详情」后查询整套配置当时已确认的占用插座，详情并发上限 2。显示处理进度、成功/失败/状态变化，慢请求显示等待时间，可停止或仅重试失败项。滚动、展开、排序均不发起详情查询。
+- 新一轮基础状态使该站旧详情失效，迟到回包丢弃。功率统一为 W；缺失字段为未知，零值仍显示；按详情排序时未知排末尾，同值按配置顺序。
+- 每站合并在途请求；按钮、下拉与失败重试共用 3 秒冷却。临时故障按 15、30、60 秒自动退避，手动可提前重试；接口明确提供的限流期限始终遵守。
+- 独立 Preferences 最多保留 128 个仍被配置引用的基础快照。只落盘插座状态和获取时间，费用、时长与设备位置不随快照保存。配置损坏不被默默覆盖，快照损坏不阻止配置使用。
+- 进入选站器先显示本地校园目录，离线可勾选保存。点击「查找附近」后明确选择校园位置或设备位置；附近列表按位置来源独立缓存 60 秒。重新定位不清除监控快照。
+- 备注、别名、暂停和顺序按配置独立保存。暂停站保留在配置中并退出查询和汇总；全部暂停有管理入口。配置与选站搜索支持名称、原名、ID，配置成员还支持备注。
+- HTTP 实例在 `finally` 中销毁；组件离开后停止排队与轮询并隔离迟到响应。监控使用虚拟列表，统计与排序结果按数据变化更新，倒计时不重新遍历插座。
+
+完整的交互规则与时效边界见[功能设计](docs/feature-design.md)，已执行的验证见[功能审查](docs/function-audit.md)。
 
 ## 目录
 
@@ -106,7 +115,10 @@ build-profile.json5               API 与产品构建配置
 hvigor/hvigor-config.json5         Hvigor 开发态版本
 oh-package.json5                  包配置（无外部依赖）
 scripts/test-core.cjs              使用 SDK 编译器的配置与选择回归
-scripts/test-refresh.cjs           冷却、请求互斥与失败处理回归
+scripts/test-station-picker.cjs    添加、替换、复制及离线选站回归
+scripts/test-refresh.cjs           分层请求、并发、时效、持久化与故障回归
+scripts/test-monitor.cjs           覆盖率、排序、暂停、历史与详情隔离回归
+scripts/test-network.cjs           网络监听、旧响应及注销竞态回归
 docs/function-audit.md             按钮与操作审查、验证状态及待办
 ```
 
@@ -147,7 +159,7 @@ devecocli run --device $deviceName --debug-line
 
 ### 定位与调试
 
-监控默认站点不要求位置权限。点击增加配置进入站点选择二级页时才查询位置；用户仅允许模糊定位也可继续使用附近查询。定位权限仅声明为使用期间访问。
+监控默认站点不要求位置权限。进入选站器不会主动定位。点击「查找附近 → 设备位置」时才申请位置；「校园位置」直接使用校区坐标。用户仅允许模糊定位也可继续查询。定位权限仅声明为使用期间访问。
 
 - 系统定位开关关闭：提示打开设置；未查询时不宣称已使用默认位置。
 - 用户拒绝授权、设备不支持定位或定位超时：显示回退状态，按 `ApiConfig` 中的清水河校区附近默认坐标查询。
@@ -197,6 +209,9 @@ devecocli log --device $deviceName --bundle-name com.example.uestc_charger_monit
 ```powershell
 node scripts/test-core.cjs
 node scripts/test-refresh.cjs
+node scripts/test-station-picker.cjs
+node scripts/test-monitor.cjs
+node scripts/test-network.cjs
 ```
 
 刷新脚本用可控时钟、站点服务替身和模拟 HTTP 响应，覆盖冷却与慢请求互斥、全部或部分失败、并发上限、缓存清除后的旧响应、定位来源与实际获取时间，以及功率单位和缺失字段的解析。

@@ -1,6 +1,7 @@
 // ConfigService.ets - 配置管理 + 变更通知
-import { ChargerConfig, ConfigStorage } from '../ChargerModels';
+import { ChargerConfig, ConfigStationMember, ConfigStorage, StationBrief } from '../ChargerModels';
 import { ConfigManager } from '../ConfigManager';
+
 import { StationService } from './StationService';
 
 type ConfigChangeListener = (config: Record<string, number>, configObj: ChargerConfig | null) => void;
@@ -31,13 +32,15 @@ export class ConfigService {
 
   // 获取所有配置
   static async loadConfigs(): Promise<ConfigStorage> {
-    return ConfigManager.getConfigs();
+    const storage = await ConfigManager.getConfigs();
+    ConfigService.retainSnapshots(storage);
+    return storage;
   }
 
   // 获取当前配置的站点映射
   static async getCurrentStationConfig(): Promise<Record<string, number>> {
     const config = await ConfigManager.getCurrentConfig();
-    return config ? config.stations : {};
+    return ConfigManager.activeStations(config);
   }
 
   // 获取当前配置对象
@@ -45,12 +48,17 @@ export class ConfigService {
     return ConfigManager.getCurrentConfig();
   }
 
+  private static retainSnapshots(storage: ConfigStorage): void {
+    const ids: Set<number> = new Set();
+    storage.configs.forEach(config => Object.values(config.stations).forEach(id => ids.add(id)));
+    try { StationService.retainStationIds(Array.from(ids)); } catch (error) { console.error('Snapshot retention failed:', error); }
+  }
+
   private static afterCommit(storage: ConfigStorage, changedId: string, onlyIfCurrent: boolean = false): void {
-    try { StationService.clearCache(); } catch (error) { console.error('Failed to clear config cache:', error); }
+    ConfigService.retainSnapshots(storage);
     const config = storage.configs.find(item => item.id === storage.currentConfigId) || null;
-    if (!onlyIfCurrent || (config && config.id === changedId)) {
-      ConfigService.notifyListeners(config ? config.stations : {}, config);
-    }
+    if (onlyIfCurrent && (!config || config.id !== changedId)) return;
+    ConfigService.notifyListeners(ConfigManager.activeStations(config), config);
   }
 
   // 写操作返回成功与持久化结果一致；通知使用写入成功时的快照，不依赖后置读取。
@@ -61,10 +69,10 @@ export class ConfigService {
     if (!switched) throw new Error('配置不存在或已被删除');
   }
 
-  static async addConfig(name: string, stations: Record<string, number>): Promise<ChargerConfig> {
+  static async addConfig(name: string, stations: Record<string, number>, stationNames?: Record<string, string>, memberSeed?: ConfigStationMember[]): Promise<ChargerConfig> {
     return ConfigManager.addConfig(name, stations, (storage, changedId) => {
       ConfigService.afterCommit(storage, changedId, true);
-    });
+    }, stationNames, memberSeed);
   }
 
   static async updateConfig(configId: string, name: string, stations: Record<string, number>): Promise<boolean> {
@@ -82,6 +90,55 @@ export class ConfigService {
   static async restoreDefaultConfigs(): Promise<void> {
     return ConfigManager.restoreDefaultConfigs((storage, changedId) => {
       ConfigService.afterCommit(storage, changedId);
+    });
+  }
+
+  static async addStations(configId: string, stations: StationBrief[]): Promise<void> {
+    return ConfigManager.addStations(configId, stations, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId, true);
+    });
+  }
+
+  static async renameStation(configId: string, stationId: number, displayName: string): Promise<void> {
+    return ConfigManager.renameStation(configId, stationId, displayName, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId, true);
+    });
+  }
+
+  static async replaceStation(configId: string, stationId: number, station: StationBrief, keepNote: boolean = false): Promise<void> {
+    return ConfigManager.replaceStation(configId, stationId, station, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId, true);
+    }, keepNote);
+  }
+
+  static async removeStation(configId: string, stationId: number): Promise<void> {
+    return ConfigManager.removeStation(configId, stationId, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId, true);
+    });
+  }
+
+  static async editStation(configId: string, stationId: number, alias: string | undefined, note: string | undefined,
+    paused: boolean | undefined): Promise<void> {
+    return ConfigManager.editStation(configId, stationId, alias, note, paused, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId, true);
+    });
+  }
+
+  static async moveStation(configId: string, stationId: number, offset: number): Promise<void> {
+    return ConfigManager.moveStation(configId, stationId, offset, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId, true);
+    });
+  }
+
+  static async removeStations(configId: string, stationIds: number[]): Promise<void> {
+    return ConfigManager.removeStations(configId, stationIds, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId, true);
+    });
+  }
+
+  static async renameConfig(configId: string, name: string): Promise<void> {
+    return ConfigManager.renameConfig(configId, name, (storage, changedId) => {
+      ConfigService.afterCommit(storage, changedId, true);
     });
   }
 

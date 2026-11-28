@@ -1,11 +1,14 @@
 ﻿// Index.ets - 主页面
 import { ChargerConfig } from './ChargerModels';
 import { ConfigService } from './services/ConfigService';
+import { StationService } from './services/StationService';
+import { NetworkState } from './services/NetworkState';
 import { ThemeManager, ThemeMode, ThemeColors } from './theme/ThemeManager';
 import { AppStateKeys } from './AppState';
 import { ChargerMonitorUI } from './components/ChargerMonitorUI';
 import { SettingsUI } from './components/SettingsUI';
 import { ConfigDetailUI } from './components/ConfigDetailUI';
+import { ConfigStationUI } from './components/ConfigStationUI';
 import { StationPickerUI } from './components/StationPickerUI';
 import { MapViewerUI } from './components/MapViewerUI';
 import { common } from '@kit.AbilityKit';
@@ -20,6 +23,17 @@ const APP_STORAGE_KEY_WINDOW = AppStateKeys.WINDOW;
 // HdsTabs 控制器
 let tabsController: HdsTabsController = new HdsTabsController();
 
+interface StationRoute {
+  configId: string;
+  stationId: number;
+}
+
+interface PickerRoute {
+  mode: string;
+  config: ChargerConfig | null;
+  replaceStationId: number;
+}
+
 @Entry
 @Component
 struct MainApp {
@@ -27,10 +41,12 @@ struct MainApp {
   @State activeTab: number = 0;
   @State pickerVisible: boolean = false;
   @State tabsVisible: boolean = true;
-  @StorageProp(AppStateKeys.FOREGROUND) foreground: boolean = false;
-  @State pickerSeed: ChargerConfig | null = null;
-  @State pickerEditId: string = '';
-  @State pickerHasChanges: boolean = false;
+  @StorageProp(AppStateKeys.FOREGROUND) @Watch('onForegroundChanged') foreground: boolean = false;
+  @State networkOnline: boolean = false;
+  @State networkRevision: number = 0;
+  private network: NetworkState = new NetworkState();
+  private draftChanged: boolean = false;
+  private writePending: boolean = false;
   private discardDialogOpen: boolean = false;
   @State configRevision: number = 0;
   @State configReady: boolean = false;
@@ -119,20 +135,32 @@ struct MainApp {
   }
 
   aboutToAppear() {
+    this.network.start((online: boolean) => {
+      if (online === this.networkOnline) return;
+      this.networkOnline = online;
+      this.networkRevision++;
+    });
     ConfigService.addListener(this.configListener);
     this.loadStationConfig();
     this.initTheme();
   }
 
   aboutToDisappear() {
+    this.network.stop();
     this.configReadVersion++;
     ConfigService.removeListener(this.configListener);
+  }
+
+  onForegroundChanged() {
+    if (this.foreground) this.network.refresh();
   }
 
   private async loadStationConfig(): Promise<void> {
     const version = ++this.configReadVersion;
     this.configReadError = false;
     try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      await StationService.initSnapshots(context.getApplicationContext());
       const config = await ConfigService.getCurrentStationConfig();
       if (version !== this.configReadVersion) return;
       this.stationConfig = config;
@@ -180,11 +208,15 @@ struct MainApp {
       if (this.configReady) {
         ChargerMonitorUI({
           stationConfig: this.stationConfig,
+          configRevision: this.configRevision,
+          networkOnline: this.networkOnline,
+          networkRevision: this.networkRevision,
           isActive: this.foreground && this.monitorVisible && this.tabsVisible,
           theme: this.theme,
+          onAddStations: (config: ChargerConfig) => { this.openPicker('add', config); },
           onManageConfig: (id: string) => {
-            if (id) this.pathStack.pushPath({ name: 'ConfigDetail', param: id });
-            else this.openPicker(null, false);
+            if (id) this.openDetail(id);
+            else this.openPicker('create', null);
           }
         })
       } else if (this.configReadError) {
@@ -211,8 +243,8 @@ struct MainApp {
       SettingsUI({
         isActive: this.foreground && this.settingsVisible && this.tabsVisible,
         revision: this.configRevision,
-        onAdd: () => { this.openPicker(null, false); },
-        onOpen: (id: string) => { this.pathStack.pushPath({ name: 'ConfigDetail', param: id }); },
+        onAdd: () => { this.openPicker('create', null); },
+        onOpen: (id: string) => { this.openDetail(id); },
         theme: this.theme,
         themeMode: this.themeMode,
         hdsImmersiveEnabled: this.hdsImmersiveEnabled,
@@ -254,40 +286,109 @@ struct MainApp {
     if (name === 'StationPicker') {
       NavDestination() {
         StationPickerUI({ isActive: this.foreground && this.pickerVisible, theme: this.theme,
-          initialConfig: this.pickerSeed, editConfigId: this.pickerEditId,
-          onDirtyChange: (dirty: boolean) => { this.pickerHasChanges = dirty; },
-          onSaved: () => { this.pickerHasChanges = false; this.configRevision++; this.pathStack.pop(); }
+          initialConfig: (param as PickerRoute).config, mode: (param as PickerRoute).mode,
+          replaceStationId: (param as PickerRoute).replaceStationId,
+          onDirtyChange: (dirty: boolean) => { this.markDirty(name, dirty); },
+          onBusyChange: (busy: boolean) => { this.markBusy(name, busy); },
+          onSaved: (openCreatedId?: string) => {
+            this.finishChange(name, (param as PickerRoute).mode === 'replace');
+            if (openCreatedId) this.openDetail(openCreatedId);
+          }
         })
-      }.title(this.pickerEditId ? '编辑配置' : '增加配置').backgroundColor(this.theme.background)
-        .onBackPressed(() => this.confirmPickerBack())
+      }.title(this.pickerTitle((param as PickerRoute).mode)).backgroundColor(this.theme.background)
+        .onBackPressed(() => this.confirmBack(name))
         .onShown(() => { this.pickerVisible = true; })
         .onHidden(() => { this.pickerVisible = false; })
     } else if (name === 'ConfigDetail') {
       NavDestination() {
         ConfigDetailUI({ configId: param as string, revision: this.configRevision, theme: this.theme,
-          onEdit: (config: ChargerConfig, copy: boolean) => { this.openPicker(config, !copy); },
-          onDeleted: () => { this.configRevision++; this.pathStack.pop(); }
+          onAddStations: (config: ChargerConfig) => { this.openPicker('add', config); },
+          onOpenStation: (config: ChargerConfig, id: number) => { this.openStation(config.id, id); },
+          onCopy: (config: ChargerConfig) => { this.openPicker('copy', config); },
+          onDirtyChange: (dirty: boolean) => { this.markDirty(name, dirty); },
+          onBusyChange: (busy: boolean) => { this.markBusy(name, busy); },
+          onChanged: () => { this.configRevision++; },
+          onDeleted: () => { this.finishChange(name); }
         })
       }.title('配置详情').backgroundColor(this.theme.background)
+        .onBackPressed(() => this.confirmBack(name))
+    } else if (name === 'ConfigStation') {
+      NavDestination() {
+        ConfigStationUI({ configId: (param as StationRoute).configId, stationId: (param as StationRoute).stationId,
+          revision: this.configRevision, theme: this.theme,
+          onReplace: (config: ChargerConfig, id: number) => { this.openPicker('replace', config, id); },
+          onDirtyChange: (dirty: boolean) => { this.markDirty(name, dirty); },
+          onBusyChange: (busy: boolean) => { this.markBusy(name, busy); },
+          onChanged: () => { this.configRevision++; },
+          onRemoved: () => { this.finishChange(name); }
+        })
+      }.title('站点详情').backgroundColor(this.theme.background)
+        .onBackPressed(() => this.confirmBack(name))
     }
   }
 
-  openPicker(config: ChargerConfig | null, edit: boolean) {
-    this.pickerSeed = config;
-    this.pickerEditId = edit && config ? config.id : '';
-    this.pickerHasChanges = false;
-    this.pathStack.pushPath({ name: 'StationPicker' });
+  private pickerTitle(mode: string): string {
+    if (mode === 'add') return '添加站点';
+    if (mode === 'replace') return '替换站点';
+    if (mode === 'copy') return '复制配置';
+    return '增加配置';
   }
 
-  confirmPickerBack(): boolean {
-    if (!this.pickerHasChanges) return false;
-    if (this.discardDialogOpen) return true;
+  private resetEditorState(): void {
+    this.draftChanged = false;
+    this.writePending = false;
+  }
+
+  private openDetail(configId: string): void {
+    this.resetEditorState();
+    this.pathStack.pushPath({ name: 'ConfigDetail', param: configId });
+  }
+
+  private openStation(configId: string, stationId: number): void {
+    const route: StationRoute = { configId, stationId };
+    this.resetEditorState();
+    this.pathStack.pushPath({ name: 'ConfigStation', param: route });
+  }
+
+  private openPicker(mode: string, config: ChargerConfig | null, replaceStationId: number = 0): void {
+    const route: PickerRoute = { mode, config, replaceStationId };
+    this.resetEditorState();
+    this.pathStack.pushPath({ name: 'StationPicker', param: route });
+  }
+
+  private isTop(name: string): boolean {
+    const names = this.pathStack.getAllPathName();
+    return names.length > 0 && names[names.length - 1] === name;
+  }
+
+  private markDirty(name: string, dirty: boolean): void {
+    if (this.isTop(name)) this.draftChanged = dirty;
+  }
+
+  private markBusy(name: string, busy: boolean): void {
+    if (this.isTop(name)) this.writePending = busy;
+  }
+
+  private finishChange(name: string, returnToConfig: boolean = false): void {
+    this.configRevision++;
+    if (!this.isTop(name)) return;
+    this.resetEditorState();
+    if (returnToConfig) this.pathStack.popToName('ConfigDetail');
+    else this.pathStack.pop();
+  }
+
+  private confirmBack(name: string): boolean {
+    if (this.writePending || this.discardDialogOpen) return true;
+    if (!this.draftChanged) return false;
     this.discardDialogOpen = true;
     this.getUIContext().getPromptAction().showDialog({
       title: '放弃未保存的修改？', message: '离开后，本次修改不会保存。',
       buttons: [{ text: '继续编辑', color: this.theme.accent }, { text: '放弃修改', color: this.theme.error }]
     }).then(result => {
-      if (result.index === 1) { this.pickerHasChanges = false; this.pathStack.pop(); }
+      if (result.index === 1 && this.isTop(name)) {
+        this.resetEditorState();
+        this.pathStack.pop();
+      }
     }).catch(() => {}).finally(() => { this.discardDialogOpen = false; });
     return true;
   }
