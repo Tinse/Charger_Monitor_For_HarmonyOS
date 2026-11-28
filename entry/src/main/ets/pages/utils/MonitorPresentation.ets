@@ -67,8 +67,9 @@ export class MonitorPresentation {
     return status;
   }
 
-  static summaryVisible(running: boolean, retryable: number, expiresAt: number, now: number): boolean {
-    return running || retryable > 0 || now < expiresAt;
+  static detailCaption(row: MonitorStationRow): string {
+    const times = row.outlets.filter(outlet => outlet.detailFetchedAt !== undefined).map(outlet => outlet.detailFetchedAt!);
+    return times.length ? `占用信息获取于 ${MonitorPresentation.clock(Math.min(...times))} · 手动更新` : '';
   }
 
   static detailSummary(completed: number, succeeded: number, failed: number, skipped: number, stopped: boolean = false): string {

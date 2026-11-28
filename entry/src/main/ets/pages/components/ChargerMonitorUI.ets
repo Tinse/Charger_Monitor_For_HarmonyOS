@@ -50,7 +50,8 @@ export struct ChargerMonitorUI {
   @Local detailFailed: number = 0;
   @Local detailSkipped: number = 0;
   @Local detailMessage: string = '';
-  @Local detailSummaryUntil: number = 0;
+  @Local showProgressDialog: boolean = false;
+  @Local progressKind: string = 'detail';
   @Local detailFailedTargets: MonitorTarget[] = [];
 
   @Local members: ConfigStationMember[] = [];
@@ -131,7 +132,7 @@ export struct ChargerMonitorUI {
     this.detailFailedTargets = [];
     this.detailTotal = 0;
     this.detailMessage = '';
-    this.detailSummaryUntil = 0;
+    this.showProgressDialog = false;
     this.errorMessage = '';
     this.searchText = '';
     this.searchInputText = '';
@@ -193,7 +194,7 @@ export struct ChargerMonitorUI {
     this.pendingIds = [];
     this.refreshGate.finish();
     this.stopDetails(false);
-    this.detailSummaryUntil = 0;
+    this.showProgressDialog = false;
   }
 
   private syncSnapshots(force: boolean = false) {
@@ -210,13 +211,7 @@ export struct ChargerMonitorUI {
     const signature = signatures.join('|');
     if (!force && signature === this.snapshotSignature) return;
     this.snapshotSignature = signature;
-    for (const key of Array.from(this.details.keys())) {
-      const detail = this.details.get(key)!;
-      const snapshot = snapshots.get(detail.stationId);
-      const member = this.members.find(item => item.stationId === detail.stationId);
-      if (!snapshot?.confirmed || snapshot.generation !== detail.generation || member?.paused ||
-        !snapshot.station.outlets.some(outlet => outlet.outletNo === detail.outletNo && outlet.status === OutletStatus.OCCUPIED)) this.details.delete(key);
-    }
+    MonitorModel.retainDetails(this.members, snapshots, this.details);
     this.rebuildRows();
   }
 
@@ -313,6 +308,8 @@ export struct ChargerMonitorUI {
       ErrorHandler.showToast(this.getUIContext(), this.isFetching ? '正在查询基础状态' : '请稍候再刷新');
       return;
     }
+    this.progressKind = 'base';
+    this.showProgressDialog = true;
     const version = ++this.manualVersion;
     this.refreshCooldown = this.refreshGate.remaining(Date.now());
     try {
@@ -331,6 +328,7 @@ export struct ChargerMonitorUI {
     } finally {
       if (version === this.manualVersion) {
         this.manualWaiting = false;
+        if (this.progressKind === 'base') this.showProgressDialog = false;
         this.refreshGate.finish();
         this.isRefreshing = false;
         this.refreshCooldown = this.refreshGate.remaining(Date.now());
@@ -352,16 +350,17 @@ export struct ChargerMonitorUI {
     if (this.detailsRunning) {
       this.detailsRunning = false;
       for (const detail of Array.from(this.details.values())) {
-        if (detail.state === 'pending') this.details.set(MonitorModel.key(detail.stationId, detail.outletNo, detail.generation), { stationId: detail.stationId, outletNo: detail.outletNo, generation: detail.generation, state: 'stopped' });
+        if (detail.state === 'pending') this.details.set(MonitorModel.key(detail.stationId, detail.outletNo, detail.generation), MonitorModel.withState({ stationId: detail.stationId, outletNo: detail.outletNo, generation: detail.generation }, 'stopped', detail));
       }
       this.detailMessage = MonitorPresentation.detailSummary(this.detailCompleted, this.detailSucceeded, this.detailFailed, this.detailSkipped, true);
-      this.detailSummaryUntil = showMessage ? Date.now() + 3000 : 0;
+      if (!showMessage) this.showProgressDialog = false;
       this.rebuildRows();
     }
   }
 
   private retryableDetailTargets(rows: MonitorStationRow[] = this.allRows): MonitorTarget[] {
-    return this.detailFailedTargets.filter(target => MonitorModel.validTarget(target, rows));
+    return MonitorModel.targets(rows).filter(target => this.detailFailedTargets.some(failed =>
+      failed.stationId === target.stationId && failed.outletNo === target.outletNo));
   }
 
   async fetchDetails(retryFailed: boolean = false) {
@@ -391,11 +390,13 @@ export struct ChargerMonitorUI {
     this.detailSkipped = 0;
     this.detailFailedTargets = [];
     this.detailMessage = '';
-    this.detailSummaryUntil = 0;
+    this.showProgressDialog = false;
     this.detailStartedAt = Date.now();
     this.detailsRunning = true;
+    this.progressKind = 'detail';
+    this.showProgressDialog = true;
     targets.forEach((target: MonitorTarget) => this.details.set(MonitorModel.key(target.stationId, target.outletNo, target.generation),
-      { stationId: target.stationId, outletNo: target.outletNo, generation: target.generation, state: 'pending' }));
+      MonitorModel.withState(target, 'pending', this.details.get(MonitorModel.key(target.stationId, target.outletNo, target.generation)))));
     this.rebuildRows();
     try {
       await StationService.fetchOccupiedDetails(readings, (step: OutletLoadProgress) => {
@@ -412,7 +413,7 @@ export struct ChargerMonitorUI {
         const detail: MonitorDetail = { stationId: target.stationId, outletNo: target.outletNo, generation: target.generation,
           state: step.detail ? 'success' : 'failed', fetchedAt: step.detail ? Date.now() : undefined,
           power_w: step.detail?.power_w, fee: step.detail?.fee, used_min: step.detail?.used_min };
-        this.details.set(key, detail);
+        this.details.set(key, step.detail ? detail : MonitorModel.withState(target, 'failed', this.details.get(key)));
         if (!step.detail) this.detailFailedTargets = [...this.detailFailedTargets, target];
         this.rebuildRows();
       }, () => version === this.detailVersion && this.hasAppeared && this.isActive && this.networkOnline,
@@ -424,7 +425,7 @@ export struct ChargerMonitorUI {
         targets.forEach((target: MonitorTarget) => {
           const key = MonitorModel.key(target.stationId, target.outletNo, target.generation);
           if (this.details.get(key)?.state === 'pending' && MonitorModel.validTarget(target, this.allRows)) {
-            this.details.set(key, { stationId: target.stationId, outletNo: target.outletNo, generation: target.generation, state: 'failed' });
+            this.details.set(key, MonitorModel.withState(target, 'failed', this.details.get(key)));
             this.detailFailedTargets = [...this.detailFailedTargets, target];
           }
         });
@@ -437,7 +438,7 @@ export struct ChargerMonitorUI {
     } finally {
       if (version === this.detailVersion) {
         this.detailsRunning = false;
-        this.detailSummaryUntil = Date.now() + 3000;
+        // 保留弹窗结果，由用户关闭或重试。
         this.rebuildRows();
       }
     }
@@ -458,14 +459,6 @@ export struct ChargerMonitorUI {
   private elapsed(start: number, at: number = this.now): number { return Math.max(0, Math.floor((at - start) / 1000)); }
 
   private rowStatus(row: MonitorStationRow): string { return MonitorPresentation.rowStatus(row); }
-
-  private showMonitorHelp(): void {
-    this.getUIContext().getPromptAction().showDialog({
-      title: '数据与占用详情',
-      message: '基础状态每 15 秒按需更新，超过 30 秒未确认转为历史，10 分钟后隐藏旧值。统计仅包含已确认的站点。\n\n占用详情需要主动查询；清单按点击时当前配置的已确认占用插座确定，不受搜索影响。未返回的数据不会显示为 0。',
-      buttons: [{ text: '知道了', color: this.theme.accent }]
-    }).catch((error: Error) => ErrorHandler.handle(error, 'ChargerMonitorUI.showMonitorHelp'));
-  }
 
   private sortLabel(mode: number): string {
     if (mode === SORT_MODE.CONFIG_ORDER) return '配置顺序';
@@ -524,14 +517,15 @@ export struct ChargerMonitorUI {
         Circle({ width: 8, height: 8 }).foregroundColor(!this.networkOnline || !this.stats.covered ? this.theme.textTertiary : this.stats.free > 0 ? this.theme.success : this.theme.error)
         Text(MonitorPresentation.title(this.stats, this.isFetching, this.networkOnline, this.members.length))
           .fontSize(15).fontWeight(FontWeight.Medium).fontColor(this.theme.textPrimary).layoutWeight(1).maxLines(2)
-        Button() { SymbolGlyph($r('sys.symbol.info_circle')).fontSize(17).fontColor([this.theme.textSecondary]) }
-          .id('monitorInfoButton').type(ButtonType.Normal).width(40).height(40).backgroundColor(Color.Transparent)
-          .accessibilityText('数据与详情说明').onClick(() => this.showMonitorHelp())
-        Button(this.refreshCooldown > 0 ? `${Math.ceil(this.refreshCooldown / 1000)}s` : '刷新')
-          .id('monitorRefreshButton').height(40).fontSize(12).padding({ left: 12, right: 12 })
+        Button(this.isFetching && this.baseManual || this.manualWaiting ? '刷新中' : this.refreshCooldown > 0 ? `${Math.ceil(this.refreshCooldown / 1000)}s` : '刷新')
+          .id('monitorRefreshButton').width(72).height(40).fontSize(12).padding({ left: 8, right: 8 })
           .backgroundColor(this.theme.accent).fontColor(this.theme.onAccent)
-          .enabled(this.stats.active > 0 && this.networkOnline && (!this.isFetching || !this.baseManual) && !this.manualWaiting && this.refreshCooldown === 0)
-          .accessibilityText('刷新当前配置基础状态').onClick(() => this.manualRefresh())
+          .enabled(this.isFetching && this.baseManual || this.manualWaiting || this.stats.active > 0 && this.networkOnline && this.refreshCooldown === 0)
+          .accessibilityText('刷新当前配置基础状态').onClick(() => {
+            if (this.isFetching && this.baseManual || this.manualWaiting) {
+              this.progressKind = 'base'; this.showProgressDialog = true;
+            } else this.manualRefresh();
+          })
       }.width('100%')
       Row() {
         Column({ space: 2 }) {
@@ -556,16 +550,6 @@ export struct ChargerMonitorUI {
       }.width('100%')
       Text(MonitorPresentation.coverage(this.stats, this.allRows)).id('monitorLoadSummary').fontSize(12).fontColor(this.theme.textSecondary).width('100%')
       if (!this.networkOnline) Text('网络未连接，恢复后自动核实历史数据').fontSize(12).fontColor(this.theme.warningText).width('100%')
-      if (this.isFetching) {
-        Text(`正在更新 ${this.baseCompleted}/${this.baseTotal} 站`).id('monitorLoadProgress').fontSize(12).fontColor(this.theme.textSecondary).width('100%')
-        Progress({ value: this.baseCompleted, total: Math.max(1, this.baseTotal), type: ProgressType.Linear })
-          .id('monitorLoadProgressBar').width('100%').height(3).color(this.theme.accent)
-          .accessibilityText(`基础状态已处理 ${this.baseCompleted} 站，共 ${this.baseTotal} 站`)
-        if (this.elapsed(this.baseStartedAt, this.now) >= 3) {
-          Text(this.elapsed(this.baseStartedAt, this.now) >= 10 ? `已等待 ${this.elapsed(this.baseStartedAt, this.now)} 秒，正在等待网络响应` : '响应较慢，已获取的站点会先显示')
-            .fontSize(12).fontColor(this.theme.textSecondary).width('100%')
-        }
-      }
       if (this.failedIds.length > 0) {
         Row({ space: 8 }) {
           Text(`${this.failedIds.length} 站更新失败`).fontSize(12).fontColor(this.theme.errorText).layoutWeight(1)
@@ -585,34 +569,57 @@ export struct ChargerMonitorUI {
   }
 
   @Builder
-  detailProgress() {
-    if (MonitorPresentation.summaryVisible(this.detailsRunning, this.retryableDetailTargets(this.allRows).length, this.detailSummaryUntil, this.now)) {
-      Column({ space: 4 }) {
+  progressOverlay() {
+    Stack({ alignContent: Alignment.Center }) {
+      Column().width('100%').height('100%').backgroundColor(this.theme.overlay)
+        .onClick(() => { this.showProgressDialog = false; })
+      Scroll() {
+        this.progressDialog()
+      }.width('90%').constraintSize({ maxWidth: 360, maxHeight: '85%' })
+        .backgroundColor(this.theme.cardBackground).borderRadius(24).scrollBar(BarState.Auto)
+    }.width('100%').height('100%')
+  }
+
+  @Builder
+  progressDialog() {
+    Column({ space: 16 }) {
+      Text(this.progressKind === 'base' ? '正在刷新站点' : this.detailsRunning ? '正在获取占用信息' : '占用信息获取结果')
+        .id('progressDialogTitle').fontSize(18).fontWeight(FontWeight.Bold).fontColor(this.theme.textPrimary).width('100%')
+      if (this.progressKind === 'base') {
+        Text(this.manualWaiting ? '正在等待本轮站点更新' : `已处理 ${this.baseCompleted}/${this.baseTotal} 站`)
+          .id('monitorLoadProgress').fontSize(14).fontColor(this.theme.textSecondary).width('100%')
+        Progress({ value: this.baseCompleted, total: Math.max(1, this.baseTotal), type: ProgressType.Linear })
+          .id('monitorLoadProgressBar').width('100%').color(this.theme.accent)
+        Text(`已等待 ${this.elapsed(this.baseStartedAt, this.now)} 秒 · 已获取的站点会先显示`)
+          .fontSize(12).fontColor(this.theme.textSecondary).width('100%')
+      } else {
+        Text(this.detailsRunning ? `已处理 ${this.detailCompleted}/${this.detailTotal} 个占用插座` : this.detailMessage)
+          .id('detailLoadProgress').fontSize(14).fontColor(this.theme.textPrimary).width('100%')
+        Progress({ value: this.detailCompleted, total: Math.max(1, this.detailTotal), type: ProgressType.Linear })
+          .id('detailLoadProgressBar').width('100%').color(this.theme.accent)
+        Text(`${this.detailSucceeded} 项成功 · ${this.detailFailed} 项失败${this.detailSkipped ? ' · ' + this.detailSkipped + ' 项状态已变化' : ''}`)
+          .fontSize(12).fontColor(this.theme.textSecondary).width('100%')
         if (this.detailsRunning) {
-          Row({ space: 8 }) {
-            Text(`详情 ${this.detailCompleted}/${this.detailTotal}${this.detailFailed ? ' · ' + this.detailFailed + ' 项失败' : ''}`)
-              .id('detailLoadProgress').fontSize(12).fontColor(this.theme.textSecondary).layoutWeight(1)
-            Button('停止').id('detailStopButton').height(40).fontSize(12).backgroundColor(Color.Transparent).fontColor(this.theme.infoText)
-              .accessibilityText('停止本轮详情查询').onClick(() => this.stopDetails())
-          }.width('100%')
-          Progress({ value: this.detailCompleted, total: Math.max(1, this.detailTotal), type: ProgressType.Linear })
-            .id('detailLoadProgressBar').width('100%').height(3).color(this.theme.accent)
-            .accessibilityText(`详情已处理 ${this.detailCompleted} 项，共 ${this.detailTotal} 项`)
-          if (this.elapsed(this.detailStartedAt, this.now) >= 3) {
-            Text(this.elapsed(this.detailStartedAt, this.now) >= 10 ? `已等待 ${this.elapsed(this.detailStartedAt, this.now)} 秒，可继续等待或停止` : '详情响应较慢，可继续等待或停止')
-              .fontSize(12).fontColor(this.theme.textSecondary).width('100%')
-          }
-        } else {
-          Row({ space: 8 }) {
-            Text(this.detailMessage).id('detailSummary').fontSize(12).fontColor(this.retryableDetailTargets(this.allRows).length ? this.theme.warningText : this.theme.textSecondary).layoutWeight(1)
-            if (this.retryableDetailTargets(this.allRows).length > 0) {
-              Button(`重试 ${this.retryableDetailTargets(this.allRows).length} 项`).id('detailRetryButton').height(40).fontSize(12)
-                .backgroundColor(Color.Transparent).fontColor(this.theme.infoText).enabled(this.networkOnline).onClick(() => this.fetchDetails(true))
-            }
-          }.width('100%')
+          Text(this.elapsed(this.detailStartedAt, this.now) >= 10 ? `已等待 ${this.elapsed(this.detailStartedAt, this.now)} 秒，响应较慢，可继续等待或停止` : `已等待 ${this.elapsed(this.detailStartedAt, this.now)} 秒`)
+            .fontSize(12).fontColor(this.theme.textSecondary).width('100%')
         }
-      }.width('100%').padding({ left: 12, right: 12, top: 4, bottom: 4 }).backgroundColor(this.theme.cardBackground).borderRadius(12)
-    }
+        Text('基础刷新保留已获取的信息，功率、费用、时长仅在主动获取时更新。')
+          .fontSize(12).fontColor(this.theme.textSecondary).width('100%')
+      }
+      Row({ space: 12 }) {
+        if (this.progressKind === 'detail' && this.detailsRunning) {
+          Button('停止获取').id('detailStopButton').height(40).fontSize(14).layoutWeight(1)
+            .backgroundColor(this.theme.secondaryBackground).fontColor(this.theme.textPrimary).onClick(() => this.stopDetails())
+        } else if (this.progressKind === 'detail' && this.retryableDetailTargets(this.allRows).length > 0) {
+          Button('重试失败项').id('detailRetryButton').height(40).fontSize(14).layoutWeight(1)
+            .backgroundColor(this.theme.secondaryBackground).fontColor(this.theme.infoText)
+            .enabled(this.networkOnline).onClick(() => this.fetchDetails(true))
+        }
+        Button(this.progressKind === 'base' || this.detailsRunning ? '收起' : '完成')
+          .id('progressDialogClose').height(40).fontSize(14).layoutWeight(1)
+          .backgroundColor(this.theme.accent).fontColor(this.theme.onAccent).onClick(() => { this.showProgressDialog = false; })
+      }.width('100%')
+    }.padding({ left: 24, right: 24, top: 28, bottom: 24 }).width('100%')
   }
 
   @Builder
@@ -656,15 +663,20 @@ export struct ChargerMonitorUI {
                   .accessibilityText(`排序：${this.sortLabel(this.sortMode)}`)
                   .bindMenu(this.showSortMenu, this.sortMenu(), { placement: Placement.BottomRight, onDisappear: () => { this.showSortMenu = false; } })
                   .onClick(() => { this.showSortMenu = !this.showSortMenu; })
-                if (this.stats.active > 0) {
-                  Button(`详情 ${this.stats.occupied}`).id('detailFetchButton').height(40).fontSize(12).padding({ left: 10, right: 10 })
-                    .backgroundColor(this.theme.accent).fontColor(this.theme.onAccent)
-                    .enabled(this.stats.occupied > 0 && !this.detailsRunning && this.networkOnline)
-                    .accessibilityText(`查询当前配置 ${this.stats.occupied} 个已确认占用插座的详情`)
-                    .onClick(() => this.fetchDetails())
-                }
               }.width('100%')
-              this.detailProgress()
+              if (this.stats.active > 0) {
+                Row({ space: 8 }) {
+                  Text('功率 · 费用 · 时长').fontSize(12).fontColor(this.theme.textSecondary).layoutWeight(1)
+                  Button(this.detailsRunning ? '查看获取进度' : '获取占用信息').id('detailFetchButton').height(40).fontSize(12).padding({ left: 14, right: 14 })
+                    .backgroundColor(this.theme.accent).fontColor(this.theme.onAccent)
+                    .enabled(this.detailsRunning || this.stats.occupied > 0 && this.networkOnline)
+                    .accessibilityText(`获取当前配置 ${this.stats.occupied} 个已确认占用插座的功率、费用和时长`)
+                    .onClick(() => {
+                      if (this.detailsRunning) { this.progressKind = 'detail'; this.showProgressDialog = true; }
+                      else this.fetchDetails();
+                    })
+                }.width('100%')
+              }
               if (this.members.length === 0) {
                 Column({ space: 8 }) {
                   Text(this.currentConfig ? '本配置还没有站点' : '暂无配置').fontColor(this.theme.textPrimary)
@@ -700,6 +712,7 @@ export struct ChargerMonitorUI {
         }.width('100%').height('100%').padding({ left: 16, right: 16, top: 8 })
           .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true }).scrollBar(BarState.Auto)
       }.width('100%').layoutWeight(1).pullToRefresh(true).onRefreshing(() => this.manualRefresh('pull'))
+        .bindContentCover($$this.showProgressDialog, this.progressOverlay(), { modalTransition: ModalTransition.NONE, backgroundColor: Color.Transparent })
     }.width('100%').height('100%').backgroundColor(this.theme.background)
       .bindSheet($$this.showStationInfo, this.stationInfo(), { height: SheetSize.MEDIUM, showClose: true, dragBar: true, backgroundColor: this.theme.cardBackground })
   }
@@ -800,6 +813,7 @@ struct MonitorStationCardUI {
           .bindMenu(this.showMenu, this.moreMenu(), { placement: Placement.BottomRight, onDisappear: () => { this.showMenu = false; } })
       }.width('100%').padding({ left: 12, right: 4, top: 6 })
       Text(MonitorPresentation.rowCaption(this.row)).fontSize(12).fontColor(this.theme.textSecondary).width('100%').padding({ left: 12, right: 12, bottom: 6 })
+      if (MonitorPresentation.detailCaption(this.row)) Text(MonitorPresentation.detailCaption(this.row)).fontSize(11).fontColor(this.theme.textSecondary).width('100%').padding({ left: 12, right: 12, bottom: 6 })
       if (this.row.note) Text(this.row.note).fontSize(12).fontColor(this.theme.textSecondary).width('100%').padding({ left: 12, right: 12, bottom: 6 }).maxLines(2)
       if (MonitorPresentation.rowStatus(this.row)) {
         Text(MonitorPresentation.rowStatus(this.row)).fontSize(12).fontColor(this.row.failed || this.row.missing ? this.theme.warningText : this.theme.textSecondary)

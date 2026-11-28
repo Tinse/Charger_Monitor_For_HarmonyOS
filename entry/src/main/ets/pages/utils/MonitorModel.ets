@@ -80,16 +80,42 @@ export class MonitorModel {
     return `${stationId}/${generation}/${outletNo}`;
   }
 
+  // 基础刷新只复核状态，已经取得的详情保留原时间；状态变化后不能带到下一次占用。
+  static retainDetails(members: ConfigStationMember[], snapshots: Map<number, StationSnapshot>, details: Map<string, MonitorDetail>): void {
+    for (const key of Array.from(details.keys())) {
+      const detail = details.get(key)!;
+      const member = members.find(item => item.stationId === detail.stationId);
+      const snapshot = snapshots.get(detail.stationId);
+      if (!member || member.paused || !snapshot || snapshot.fromDisk ||
+        !snapshot.station.outlets.some(outlet => outlet.outletNo === detail.outletNo && outlet.status === OutletStatus.OCCUPIED)) {
+        details.delete(key);
+      } else if (snapshot.generation !== detail.generation) {
+        details.delete(key);
+        // 未完成请求仍受世代隔离保护，只迁移已获取的数值。
+        if (detail.fetchedAt !== undefined) {
+          const retained: MonitorDetail = { stationId: detail.stationId, outletNo: detail.outletNo, generation: snapshot.generation, state: 'success',
+            fetchedAt: detail.fetchedAt, power_w: detail.power_w, fee: detail.fee, used_min: detail.used_min };
+          details.set(MonitorModel.key(detail.stationId, detail.outletNo, snapshot.generation), retained);
+        }
+      }
+    }
+  }
+
+  static withState(target: MonitorTarget, state: string, previous?: MonitorDetail): MonitorDetail {
+    return { stationId: target.stationId, outletNo: target.outletNo, generation: target.generation, state,
+      fetchedAt: previous?.fetchedAt, power_w: previous?.power_w, fee: previous?.fee, used_min: previous?.used_min };
+  }
+
   static rows(members: ConfigStationMember[], snapshots: Map<number, StationSnapshot>,
     details: Map<string, MonitorDetail>, pending: number[], failed: number[], retries: Map<number, number>, manualRetries: Map<number, number> = new Map(), missing: number[] = []): MonitorStationRow[] {
     return members.map((member: ConfigStationMember, index: number): MonitorStationRow => {
       const snapshot = snapshots.get(member.stationId);
       const confirmed = !member.paused && !!snapshot?.confirmed;
       const outlets: MonitorOutletRow[] = member.paused ? [] : (snapshot?.station.outlets || []).map((outlet: OutletDetail): MonitorOutletRow => {
-        const detail = confirmed && snapshot ? details.get(MonitorModel.key(member.stationId, outlet.outletNo, snapshot.generation)) : undefined;
-        // 基础数据中即使意外带有详情字段也不直接显示：只绑定本世代显式查询的详情。
+        const detail = snapshot && outlet.status === OutletStatus.OCCUPIED ? details.get(MonitorModel.key(member.stationId, outlet.outletNo, snapshot.generation)) : undefined;
+        // 只展示显式查询得到的数值；基础刷新和详情重试都不抹去上次成功记录。
         const displayed: MonitorOutletRow = { renderKey: '', serial: outlet.serial, outletNo: outlet.outletNo, status: outlet.status,
-          detailState: outlet.status !== OutletStatus.OCCUPIED ? '' : !confirmed ? 'history' : detail?.state || 'unknown',
+          detailState: outlet.status !== OutletStatus.OCCUPIED ? '' : detail?.fetchedAt !== undefined ? 'success' : !confirmed ? 'history' : detail?.state || 'unknown',
           detailFetchedAt: detail?.fetchedAt, power_w: detail?.power_w, fee: detail?.fee, used_min: detail?.used_min };
         displayed.renderKey = JSON.stringify(displayed);
         return displayed;

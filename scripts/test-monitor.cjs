@@ -62,7 +62,8 @@ let retryRows = M.rows(members,snapshots,details,[2],[9],new Map([[9,now+60000]]
 assert.equal(M.dueIds(retryRows,now,true).length,0,'automatic retry respects backoff and pending requests');
 assert.deepEqual(Array.from(M.dueIds(retryRows,now+60000,true)),[9]);
 snapshots.set(9,snap(9,{confirmed:false}));
-assert.equal(rows()[0].outlets[0].power_w,undefined,'unconfirmed history cannot retain live details');
+assert.equal(rows()[0].outlets[0].power_w,0,'unconfirmed history preserves previously obtained values without confirming availability');
+assert.equal(rows()[0].confirmed,false);
 snapshots.delete(9);
 assert.equal(rows()[0].outlets.length,0,'expired history hides all old values but preserves row');
 assert.equal(M.members({stations:{Alias:1},stationNames:{'1':'Original'}},{Alias:1})[0].originalName,'Original');
@@ -89,11 +90,20 @@ assert.deepEqual(unknownBadges.map(badge=>badge.text),['功率 —','费用 —'
 assert.ok(unknownBadges.every(badge=>badge.tone==='neutral'),'successful missing fields must remain neutral unknown values');
 assert.deepEqual(Array.from(P.badges({...occupied,detailState:'success',power_w:0,fee:0,used_min:0}),badge=>badge.text),['0W','¥0.00','0分钟']);
 assert.equal(P.badges({...occupied,status:1,detailState:'success',power_w:99}).length,0);
-assert.equal(P.summaryVisible(false,0,3000,2999),true);
-assert.equal(P.summaryVisible(false,0,3000,3000),false);
-assert.equal(P.summaryVisible(false,1,3000,3001),true,'retryable failure stays visible after a success-summary deadline');
-assert.equal(P.summaryVisible(true,0,0,9999),true);
 assert.ok(!P.detailSummary(2,0,0,2).includes('成功'),'all skipped details must not claim success');
+
+// Completed details survive status refreshes with bounded storage and their original timestamp.
+const retained=new Map([[M.key(1,'1-1',1),{stationId:1,outletNo:'1-1',generation:1,state:'success',fetchedAt:now-5000,power_w:0,fee:1,used_min:2}]]);
+for(let generation=2;generation<=40;generation++) {
+  M.retainDetails([member(1)],new Map([[1,snap(1,{generation})]]),retained);
+  assert.equal(retained.size,1,'refreshing must not accumulate one detail per generation');
+  assert.equal(retained.get(M.key(1,'1-1',generation)).fetchedAt,now-5000);
+}
+M.retainDetails([member(1,true)],new Map([[1,snap(1,{generation:40})]]),retained);
+assert.equal(retained.size,0,'pausing a member removes its charging record');
+const transient=new Map([[M.key(1,'1-1',1),{stationId:1,outletNo:'1-1',generation:1,state:'pending'}]]);
+M.retainDetails([member(1)],new Map([[1,snap(1,{generation:2})]]),transient);
+assert.equal(transient.size,0,'in-flight old generations are never promoted to completed records');
 
 // Exercise the real component controller without ArkUI rendering or a device.
 const filename = path.join(root,base,'components/ChargerMonitorUI.ets');
@@ -147,6 +157,8 @@ async function main(){
   heldDetails=new Promise(resolve=>releaseDetails=resolve);
   const task=ui.fetchDetails();
   assert.equal(detailCalls.length,1);
+  assert.equal(ui.showProgressDialog,true,'explicit detail fetching opens progress dialog');
+  assert.equal(ui.progressKind,'detail');
   assert.equal(detailCalls[0].only.length,2);
   ui.searchText='1'; ui.onFilterChange();
   assert.equal(detailCalls[0].only.length,2,'search cannot shrink the fixed whole-config target list');
@@ -164,8 +176,11 @@ async function main(){
   const second=detailCalls[1];
   second.progress({stationId:2,outletNo:'2-1',generation:1,detail:null,completed:1,total:2,succeeded:0,failed:1,skipped:0});
   assert.equal(ui.retryableDetailTargets().length,1);
+  current.set(2,snap(2,{generation:2})); ui.syncSnapshots(true);
+  assert.equal(ui.retryableDetailTargets()[0].generation,2,'failed retry rechecks still-occupied outlets against the latest base snapshot');
   await ui.fetchDetails(true);
   assert.deepEqual(Array.from(detailCalls[2].only),['2-1'],'detail retry is restricted to failed valid target');
+  current.set(2,snap(2)); ui.syncSnapshots(true);
   let releaseBase;
   heldBase=new Promise(resolve=>releaseBase=resolve);
   const baseTask=ui.fetchData([2],true);
@@ -191,7 +206,10 @@ async function main(){
   const auto=ui.fetchData([1],false);
   const refresh=ui.manualRefresh('button',[1,2]);
   assert.equal(ui.manualWaiting,true);
+  assert.equal(ui.showProgressDialog,true,'manual refresh shows progress while reusing an automatic batch');
+  assert.equal(ui.progressKind,'base');
   finishAuto(); await auto; await refresh; heldBase=null;
+  assert.equal(ui.showProgressDialog,false,'completed manual refresh dismisses its progress dialog');
   assert.deepEqual(Object.values(baseCalls[before].config),[1]);
   assert.deepEqual(Object.values(baseCalls[before+1].config),[2],'manual refresh supplements only stations not covered by the automatic batch');
   ui.failedIds=[1,2]; ui.retries=new Map([[1,now+60000],[2,now+60000]]); ui.manualRetries=new Map([[1,now+10000]]); ui.syncSnapshots(true);
@@ -238,7 +256,7 @@ async function main(){
   assert.equal(narrow.readings.length,1);
   assert.deepEqual(Array.from(narrow.readings[0].station.outlets,outlet=>outlet.outletNo),['shared'],'frozen station snapshots contain only exact retry targets');
   assert.ok(!completeSource.includes('.key((row: MonitorStationRow) => JSON.stringify'));
-  // Completing a job immediately withdraws running progress; its informational summary lasts exactly 3 seconds.
+  // The progress dialog retains its final result until dismissed, without sending another request.
   current=new Map([[1,snap(1)],[2,snap(2)]]); ui.now=now; ui.syncSnapshots(true);
   let finishSummary; heldDetails=new Promise(resolve=>finishSummary=resolve);
   const summaryTask=ui.fetchDetails();
@@ -248,8 +266,8 @@ async function main(){
   finishSummary(); await summaryTask; heldDetails=null;
   assert.equal(ui.detailsRunning,false,'progress is not retained after the service promise completes');
   assert.equal(ui.detailMessage,'已获取 2 项占用详情');
-  assert.equal(P.summaryVisible(ui.detailsRunning,0,ui.detailSummaryUntil,now+2999),true);
-  assert.equal(P.summaryVisible(ui.detailsRunning,0,ui.detailSummaryUntil,now+3000),false);
+  assert.equal(ui.showProgressDialog,true,'completed detail results stay in the dialog until dismissed');
+  assert.equal(ui.progressKind,'detail');
   const card=new Card(); card.row=ui.allRows[0]; card.now=now;
   const retries=[]; card.onRetry=id=>retries.push(id); card.onInfo=id=>ui.openStationInfo(id);
   const counts=[baseCalls.length,detailCalls.length];
@@ -259,6 +277,31 @@ async function main(){
   current.set(1,snap(1,{generation:2})); ui.syncSnapshots(true); ui.onInfoRowsChange();
   assert.equal(ui.showStationInfo,true,'a routine base refresh must not dismiss the stable page-level information panel');
   assert.equal(ui.infoRow.generation,2,'the open information panel reads the latest row, not a frozen snapshot');
+  assert.equal(ui.infoRow.outlets[0].fee,0,'base refresh retains explicitly fetched zero fee');
+  assert.equal(ui.infoRow.outlets[0].detailFetchedAt,now,'base refresh cannot advance detail acquisition time');
+  assert.ok(P.detailCaption(ui.infoRow).includes('手动更新'),'retained detail values disclose their separate update policy');
+  current.set(1,snap(1,{generation:3,confirmed:false})); ui.syncSnapshots(true);
+  assert.equal(ui.infoRow.outlets[0].fee,0,'temporary stale/offline status preserves the last detail record');
+  assert.equal(ui.infoRow.confirmed,false);
+  current.set(1,{...snap(1,{generation:4}),station:{id:1,name:'One',outlets:[{serial:1,outletNo:'1-1',status:1}]}}); ui.syncSnapshots(true);
+  assert.equal(ui.infoRow.outlets[0].fee,undefined,'a now-free outlet drops obsolete charging information');
+  current.set(1,snap(1,{generation:5})); ui.syncSnapshots(true);
+  assert.equal(ui.infoRow.outlets[0].fee,undefined,'a later new occupancy cannot resurrect an older session');
+  // A new explicit query must keep saved values while pending, failed, or stopped.
+  const saved={stationId:2,outletNo:'2-1',generation:1,state:'success',fetchedAt:now-1000,power_w:123,fee:0,used_min:5};
+  ui.details.set(M.key(2,'2-1',1),saved); ui.syncSnapshots(true);
+  let finishRetry; heldDetails=new Promise(resolve=>finishRetry=resolve);
+  const retainedTask=ui.fetchDetails(); const retainedJob=detailCalls.at(-1);
+  assert.equal(ui.allRows[1].outlets[0].power_w,123,'pending query retains last successful metrics');
+  retainedJob.progress({stationId:2,outletNo:'2-1',generation:1,detail:null,completed:1,total:2,succeeded:0,failed:1,skipped:0});
+  assert.equal(ui.allRows[1].outlets[0].power_w,123,'failed query retains last successful metrics');
+  assert.equal(ui.allRows[1].outlets[0].detailFetchedAt,now-1000,'failed query never changes the displayed detail timestamp');
+  ui.stopDetails(); finishRetry(); await retainedTask; heldDetails=null;
+  assert.equal(ui.allRows[1].outlets[0].power_w,123,'stopping does not erase successful values');
+  ui.showProgressDialog=false;
+  await ui.fetchData([2],false);
+  assert.equal(ui.showProgressDialog,false,'automatic background refresh must never open a modal');
+
   card.row=ui.allRows[1]; card.onRowChange(); assert.equal(card.showMenu,false,'a recycled row cannot keep a previous station menu open');
   card.showMore(); card.selectMore('refresh');
   assert.deepEqual(retries,[2],'explicit refresh action uses the latest recycled station id');
